@@ -64,4 +64,30 @@ clean:
 	      feat*.ppm features.ft features.txt
 
 
+######################################################################
+# Profiling Targets
+######################################################################
+
+PROFILES_DIR = profiles
+
+profile: $(EXAMPLES:.c=)
+	mkdir -p $(PROFILES_DIR)
+	@echo "Running example1 for profiling..."
+	./example1
+	gprof example1 gmon.out > $(PROFILES_DIR)/gprof_example1.txt
+	@echo "Saved: $(PROFILES_DIR)/gprof_example1.txt"
+
+	@echo "Running example3 for profiling..."
+	./example3
+	gprof example3 gmon.out > $(PROFILES_DIR)/gprof_example3.txt
+	@echo "Saved: $(PROFILES_DIR)/gprof_example3.txt"
+
+profile-all: $(EXAMPLES:.c=)
+	mkdir -p $(PROFILES_DIR)
+	@for exe in $(EXAMPLES:.c=); do \
+	    echo "Running $$exe ..."; \
+	    ./$$exe; \
+	    gprof $$exe gmon.out > $(PROFILES_DIR)/gprof_$$exe.txt; \
+	    echo "Saved: $(PROFILES_DIR)/gprof_$$exe.txt"; \
+	done
 
