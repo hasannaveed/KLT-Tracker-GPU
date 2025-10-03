@@ -9,14 +9,22 @@ The work is divided into multiple versions (V1–V4), each demonstrating increme
 
 ## 📂 Repository Structure
 src/
-├── V1/ # Baseline sequential CPU implementation
-├── V2/ # Naive GPU implementation (CUDA)
-├── V3/ # Optimized GPU implementation (CUDA + memory/launch optimizations)
-├── V4/ # OpenACC pragma-based optimized implementation
-data/ # Dataset (images/sequences for testing)
-report/ # Reports (D1–D4 deliverables)
-slides/ # Presentation slides
-README.md # Project overview and usage instructions
+├── V1/ 
+# Baseline sequential CPU implementation
+├── V2/ 
+# Naive GPU implementation (CUDA)
+├── V3/ 
+# Optimized GPU implementation (CUDA + memory/launch optimizations)
+├── V4/ 
+# OpenACC pragma-based optimized implementation
+data/ 
+# Dataset (images/sequences for testing)
+report/ 
+# Reports (D1–D4 deliverables)
+slides/ 
+# Presentation slides
+README.md 
+# Project overview and usage instructions
 
 
 ---
