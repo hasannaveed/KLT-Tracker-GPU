@@ -63,7 +63,6 @@ clean:
 	rm -f *.o *.a $(EXAMPLES:.c=) *.tar *.tar.gz libklt.a \
 	      feat*.ppm features.ft features.txt
 
-
 ######################################################################
 # Profiling Targets
 ######################################################################
@@ -76,6 +75,9 @@ profile: $(EXAMPLES:.c=)
 	./example1
 	gprof example1 gmon.out > $(PROFILES_DIR)/gprof_example1.txt
 	@echo "Saved: $(PROFILES_DIR)/gprof_example1.txt"
+	@echo "Generating profile.png from gprof_example1.txt..."
+	gprof2dot -f prof $(PROFILES_DIR)/gprof_example1.txt | dot -Tpng -o $(PROFILES_DIR)/profile.png
+	@echo "Saved: $(PROFILES_DIR)/profile.png"
 
 	@echo "Running example3 for profiling..."
 	./example3
@@ -90,4 +92,3 @@ profile-all: $(EXAMPLES:.c=)
 	    gprof $$exe gmon.out > $(PROFILES_DIR)/gprof_$$exe.txt; \
 	    echo "Saved: $(PROFILES_DIR)/gprof_$$exe.txt"; \
 	done
-
