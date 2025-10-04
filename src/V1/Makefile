@@ -69,26 +69,34 @@ clean:
 
 PROFILES_DIR = profiles
 
+# Generate gprof text reports for all examples
 profile: $(EXAMPLES:.c=)
 	mkdir -p $(PROFILES_DIR)
-	@echo "Running example1 for profiling..."
-	./example1
-	gprof example1 gmon.out > $(PROFILES_DIR)/gprof_example1.txt
-	@echo "Saved: $(PROFILES_DIR)/gprof_example1.txt"
-	@echo "Generating profile.png from gprof_example1.txt..."
-	gprof2dot -f prof $(PROFILES_DIR)/gprof_example1.txt | dot -Tpng -o $(PROFILES_DIR)/profile.png
-	@echo "Saved: $(PROFILES_DIR)/profile.png"
-
-	@echo "Running example3 for profiling..."
-	./example3
-	gprof example3 gmon.out > $(PROFILES_DIR)/gprof_example3.txt
-	@echo "Saved: $(PROFILES_DIR)/gprof_example3.txt"
-
-profile-all: $(EXAMPLES:.c=)
-	mkdir -p $(PROFILES_DIR)
 	@for exe in $(EXAMPLES:.c=); do \
-	    echo "Running $$exe ..."; \
+	    echo "=============================================="; \
+	    echo "Running $$exe for profiling..."; \
 	    ./$$exe; \
+	    echo "Generating gprof report for $$exe..."; \
 	    gprof $$exe gmon.out > $(PROFILES_DIR)/gprof_$$exe.txt; \
 	    echo "Saved: $(PROFILES_DIR)/gprof_$$exe.txt"; \
 	done
+	@echo "=============================================="
+	@echo "All gprof text reports generated successfully in $(PROFILES_DIR)/"
+
+# Generate call graph PNGs from gprof text reports
+all-graph:
+	mkdir -p $(PROFILES_DIR)
+	@for txt in $(PROFILES_DIR)/gprof_*.txt; do \
+	    exe=$$(basename $$txt .txt | sed 's/^gprof_//'); \
+	    echo "Generating call graph for $$exe..."; \
+	    gprof2dot -f prof $$txt | dot -Tpng -o $(PROFILES_DIR)/profile_$$exe.png; \
+	    echo "Saved: $(PROFILES_DIR)/profile_$$exe.png"; \
+	done
+	@echo "=============================================="
+	@echo "All call graph images generated successfully in $(PROFILES_DIR)/"
+
+# Clean all profiling-related files (safe to use)
+clean-profile:
+	@echo "Cleaning profiling files..."
+	rm -rf $(PROFILES_DIR) gmon.out
+	@echo "Profiling data cleaned successfully."
