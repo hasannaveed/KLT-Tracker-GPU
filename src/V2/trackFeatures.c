@@ -462,8 +462,14 @@ static int _trackFeature(
         
 ///printf("[DEBUG] gradx pointer in CUDA = %p, grady pointer = %p\n", gradx, grady);
 
-	  _computeGradientSum_CUDA(gradx1, grady1, gradx2, grady2,
+	#ifdef USE_GPU
+		  _computeGradientSum_CUDA(gradx1, grady1, gradx2, grady2,
 			  x1, y1, *x2, *y2, width, height, gradx, grady);
+	#else
+		  _computeGradientSum(gradx1, grady1, gradx2, grady2,
+			  x1, y1, *x2, *y2, width, height, gradx, grady);
+	#endif
+
 
     }
 		
@@ -1057,8 +1063,14 @@ static int _am_trackFeatureAffine(
       } else {
         _computeIntensityDifference(img1, img2, x1, y1, *x2, *y2, 
                                     width, height, imgdiff);
-		_computeGradientSum_CUDA(gradx1, grady1, gradx2, grady2,
-			x1, y1, *x2, *y2, width, height, gradx, grady);
+		#ifdef USE_GPU
+				_computeGradientSum_CUDA(gradx1, grady1, gradx2, grady2,
+					x1, y1, *x2, *y2, width, height, gradx, grady);
+		#else
+				_computeGradientSum(gradx1, grady1, gradx2, grady2,
+					x1, y1, *x2, *y2, width, height, gradx, grady);
+		#endif
+
       }
       
 #ifdef DEBUG_AFFINE_MAPPING	
