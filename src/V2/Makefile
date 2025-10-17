@@ -6,14 +6,14 @@
 NVCC = nvcc
 
 # Compiler flags
-NVCCFLAGS = -O3 -Xcompiler -fPIC -DNDEBUG
+NVCCFLAGS = -O3 -Xcompiler -fPIC -DNDEBUG -pg
 
 # Libraries
 LIBS = -lm -lcudart
 
 # Source files for the library
-SRC_LIB = convolve.cu computeGradientSum.cu error.c pnmio.c pyramid.c \
-          selectGoodFeatures.c storeFeatures.c trackFeatures.c klt.c \
+SRC_LIB = convolve.cu computeGradientSum.cu selectGoodFeatures_GPU.cu error.c pnmio.c pyramid.c \
+           storeFeatures.c trackFeatures.c klt.c \
           klt_util.c writeFeatures.c
 
 # Source files for examples
@@ -94,6 +94,16 @@ profile: $(SRC_EXAMPLES:.c=)
 	    echo "Saved: $(PROFILES_DIR)/gprof_$$exe.txt"; \
 	done
 	@echo "All profiling reports saved in $(PROFILES_DIR)/"
+
+all-graph:
+	mkdir -p $(PROFILES_DIR)
+	@for txt in $(PROFILES_DIR)/gprof_*.txt; do \
+	    exe=$$(basename $$txt .txt | sed 's/^gprof_//'); \
+	    echo "Generating call graph for $$exe..."; \
+	    gprof2dot -f prof $$txt | dot -Tpng -o $(PROFILES_DIR)/profile_$$exe.png; \
+	    echo "Saved: $(PROFILES_DIR)/profile_$$exe.png"; \
+	done
+
 
 clean-profile:
 	rm -rf $(PROFILES_DIR) gmon.out

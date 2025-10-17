@@ -1,0 +1,405 @@
+Flat profile:
+
+Each sample counts as 0.01 seconds.
+  %   cumulative   self              self     total           
+ time   seconds   seconds    calls  ms/call  ms/call  name    
+100.00      0.01     0.01        1    10.00    10.00  _quicksort
+  0.00      0.01     0.00    19600     0.00     0.00  _interpolate
+  0.00      0.01     0.00      200     0.00     0.00  _computeGradientSumKernel(float const*, float const*, float const*, float const*, float, float, float, float, int, int, int, int, float*, float*)
+  0.00      0.01     0.00      200     0.00     0.00  __device_stub__Z25_computeGradientSumKernelPKfS0_S0_S0_ffffiiiiPfS1_(float const*, float const*, float const*, float const*, float, float, float, float, int, int, int, int, float*, float*)
+  0.00      0.01     0.00      200     0.00     0.00  _computeGradientSum_CUDA
+  0.00      0.01     0.00      200     0.00     0.00  _computeIntensityDifference
+  0.00      0.01     0.00       21     0.00     0.00  _KLTCreateFloatImage
+  0.00      0.01     0.00       21     0.00     0.00  _KLTFreeFloatImage
+  0.00      0.01     0.00       10     0.00     0.00  convolveImageVertKernel(float const*, float*, float const*, int, int, int)
+  0.00      0.01     0.00       10     0.00     0.00  convolveImageHorizKernel(float const*, float*, float const*, int, int, int)
+  0.00      0.01     0.00       10     0.00     0.00  __device_stub__Z23convolveImageVertKernelPKfPfS0_iii(float const*, float*, float const*, int, int, int)
+  0.00      0.01     0.00       10     0.00     0.00  __device_stub__Z24convolveImageHorizKernelPKfPfS0_iii(float const*, float*, float const*, int, int, int)
+  0.00      0.01     0.00       10     0.00     0.00  _computeKernels(float, ConvolutionKernel*, ConvolutionKernel*) [clone .constprop.0]
+  0.00      0.01     0.00       10     0.00     0.00  _convolveImageHorizGPU
+  0.00      0.01     0.00       10     0.00     0.00  _convolveImageVertGPU
+  0.00      0.01     0.00        6     0.00     0.00  _KLTCreatePyramid
+  0.00      0.01     0.00        6     0.00     0.00  _KLTFreePyramid
+  0.00      0.01     0.00        5     0.00     0.00  KLTCountRemainingFeatures
+  0.00      0.01     0.00        5     0.00     0.00  _KLTComputeGradients
+  0.00      0.01     0.00        5     0.00     0.00  _KLTComputeSmoothedImage
+  0.00      0.01     0.00        4     0.00     0.00  _KLTComputeSmoothSigma
+  0.00      0.01     0.00        3     0.00     0.00  KLTWriteFeatureList
+  0.00      0.01     0.00        3     0.00     0.00  _KLTToFloatImage
+  0.00      0.01     0.00        2     0.00     0.00  KLTWriteFeatureListToPPM
+  0.00      0.01     0.00        2     0.00     0.00  _KLTComputePyramid
+  0.00      0.01     0.00        2     0.00     0.00  _KLTGetKernelWidths
+  0.00      0.01     0.00        2     0.00     0.00  _findStringWidth
+  0.00      0.01     0.00        2     0.00     0.00  _printSetupTxt
+  0.00      0.01     0.00        2     0.00     0.00  pgmRead
+  0.00      0.01     0.00        2     0.00     0.00  pgmReadFile
+  0.00      0.01     0.00        2     0.00     0.00  pgmReadHeader
+  0.00      0.01     0.00        2     0.00     0.00  pnmReadHeader
+  0.00      0.01     0.00        2     0.00     0.00  ppmWrite
+  0.00      0.01     0.00        2     0.00     0.00  ppmWriteFileRGB
+  0.00      0.01     0.00        1     0.00     0.00  KLTChangeTCPyramid
+  0.00      0.01     0.00        1     0.00     0.00  KLTCreateFeatureList
+  0.00      0.01     0.00        1     0.00     0.00  KLTCreateTrackingContext
+  0.00      0.01     0.00        1     0.00     0.00  KLTPrintTrackingContext
+  0.00      0.01     0.00        1     0.00    10.00  KLTSelectGoodFeatures
+  0.00      0.01     0.00        1     0.00     0.00  KLTTrackFeatures
+  0.00      0.01     0.00        1     0.00     0.00  KLTUpdateTCBorder
+  0.00      0.01     0.00        1     0.00    10.00  _KLTSelectGoodFeatures
+
+ %         the percentage of the total running time of the
+time       program used by this function.
+
+cumulative a running sum of the number of seconds accounted
+ seconds   for by this function and those listed above it.
+
+ self      the number of seconds accounted for by this
+seconds    function alone.  This is the major sort for this
+           listing.
+
+calls      the number of times this function was invoked, if
+           this function is profiled, else blank.
+
+ self      the average number of milliseconds spent in this
+ms/call    function per call, if this function is profiled,
+	   else blank.
+
+ total     the average number of milliseconds spent in this
+ms/call    function and its descendents per call, if this
+	   function is profiled, else blank.
+
+name       the name of the function.  This is the minor sort
+           for this listing. The index shows the location of
+	   the function in the gprof listing. If the index is
+	   in parenthesis it shows where it would appear in
+	   the gprof listing if it were to be printed.
+
+Copyright (C) 2012-2024 Free Software Foundation, Inc.
+
+Copying and distribution of this file, with or without modification,
+are permitted in any medium without royalty provided the copyright
+notice and this notice are preserved.
+
+		     Call graph (explanation follows)
+
+
+granularity: each sample hit covers 4 byte(s) for 100.00% of 0.01 seconds
+
+index % time    self  children    called     name
+                0.00    0.01       1/1           main [2]
+[1]    100.0    0.00    0.01       1         KLTSelectGoodFeatures [1]
+                0.00    0.01       1/1           _KLTSelectGoodFeatures [3]
+                0.00    0.00       1/21          _KLTFreeFloatImage [53]
+                0.00    0.00       1/5           KLTCountRemainingFeatures [5]
+-----------------------------------------------
+                                                 <spontaneous>
+[2]    100.0    0.00    0.01                 main [2]
+                0.00    0.01       1/1           KLTSelectGoodFeatures [1]
+                0.00    0.00       3/3           KLTWriteFeatureList [6]
+                0.00    0.00       2/2           pgmReadFile [9]
+                0.00    0.00       2/2           KLTWriteFeatureListToPPM [7]
+                0.00    0.00       1/1           KLTCreateTrackingContext [16]
+                0.00    0.00       1/1           KLTCreateFeatureList [15]
+                0.00    0.00       1/1           KLTPrintTrackingContext [17]
+                0.00    0.00       1/1           KLTTrackFeatures [18]
+-----------------------------------------------
+                0.00    0.01       1/1           KLTSelectGoodFeatures [1]
+[3]    100.0    0.00    0.01       1         _KLTSelectGoodFeatures [3]
+                0.01    0.00       1/1           _quicksort [4]
+                0.00    0.00       4/21          _KLTCreateFloatImage [52]
+                0.00    0.00       3/21          _KLTFreeFloatImage [53]
+                0.00    0.00       1/5           _KLTComputeGradients [63]
+                0.00    0.00       1/3           _KLTToFloatImage [66]
+                0.00    0.00       1/5           _KLTComputeSmoothedImage [64]
+                0.00    0.00       1/4           _KLTComputeSmoothSigma [65]
+-----------------------------------------------
+                               31664             _quicksort [4]
+                0.01    0.00       1/1           _KLTSelectGoodFeatures [3]
+[4]    100.0    0.01    0.00       1+31664   _quicksort [4]
+                               31664             _quicksort [4]
+-----------------------------------------------
+                0.00    0.00       1/5           KLTSelectGoodFeatures [1]
+                0.00    0.00       2/5           KLTTrackFeatures [18]
+                0.00    0.00       2/5           KLTWriteFeatureListToPPM [7]
+[5]      0.0    0.00    0.00       5         KLTCountRemainingFeatures [5]
+-----------------------------------------------
+                0.00    0.00       3/3           main [2]
+[6]      0.0    0.00    0.00       3         KLTWriteFeatureList [6]
+                0.00    0.00       2/2           _printSetupTxt [70]
+                0.00    0.00       2/2           _findStringWidth [69]
+-----------------------------------------------
+                0.00    0.00       2/2           main [2]
+[7]      0.0    0.00    0.00       2         KLTWriteFeatureListToPPM [7]
+                0.00    0.00       2/5           KLTCountRemainingFeatures [5]
+                0.00    0.00       2/2           ppmWriteFileRGB [13]
+-----------------------------------------------
+                0.00    0.00       2/2           pgmReadFile [9]
+[8]      0.0    0.00    0.00       2         pgmRead [8]
+                0.00    0.00       2/2           pgmReadHeader [10]
+-----------------------------------------------
+                0.00    0.00       2/2           main [2]
+[9]      0.0    0.00    0.00       2         pgmReadFile [9]
+                0.00    0.00       2/2           pgmRead [8]
+-----------------------------------------------
+                0.00    0.00       2/2           pgmRead [8]
+[10]     0.0    0.00    0.00       2         pgmReadHeader [10]
+                0.00    0.00       2/2           pnmReadHeader [11]
+-----------------------------------------------
+                0.00    0.00       2/2           pgmReadHeader [10]
+[11]     0.0    0.00    0.00       2         pnmReadHeader [11]
+-----------------------------------------------
+                0.00    0.00       2/2           ppmWriteFileRGB [13]
+[12]     0.0    0.00    0.00       2         ppmWrite [12]
+-----------------------------------------------
+                0.00    0.00       2/2           KLTWriteFeatureListToPPM [7]
+[13]     0.0    0.00    0.00       2         ppmWriteFileRGB [13]
+                0.00    0.00       2/2           ppmWrite [12]
+-----------------------------------------------
+                0.00    0.00       1/1           KLTCreateTrackingContext [16]
+[14]     0.0    0.00    0.00       1         KLTChangeTCPyramid [14]
+-----------------------------------------------
+                0.00    0.00       1/1           main [2]
+[15]     0.0    0.00    0.00       1         KLTCreateFeatureList [15]
+-----------------------------------------------
+                0.00    0.00       1/1           main [2]
+[16]     0.0    0.00    0.00       1         KLTCreateTrackingContext [16]
+                0.00    0.00       1/1           KLTUpdateTCBorder [19]
+                0.00    0.00       1/1           KLTChangeTCPyramid [14]
+-----------------------------------------------
+                0.00    0.00       1/1           main [2]
+[17]     0.0    0.00    0.00       1         KLTPrintTrackingContext [17]
+-----------------------------------------------
+                0.00    0.00       1/1           main [2]
+[18]     0.0    0.00    0.00       1         KLTTrackFeatures [18]
+                0.00    0.00    9800/19600       _interpolate [47]
+                0.00    0.00     200/200         _computeGradientSum_CUDA [50]
+                0.00    0.00     200/200         _computeIntensityDifference [51]
+                0.00    0.00       6/6           _KLTCreatePyramid [61]
+                0.00    0.00       6/6           _KLTFreePyramid [62]
+                0.00    0.00       4/5           _KLTComputeGradients [63]
+                0.00    0.00       3/21          _KLTCreateFloatImage [52]
+                0.00    0.00       3/21          _KLTFreeFloatImage [53]
+                0.00    0.00       2/5           KLTCountRemainingFeatures [5]
+                0.00    0.00       2/3           _KLTToFloatImage [66]
+                0.00    0.00       2/4           _KLTComputeSmoothSigma [65]
+                0.00    0.00       2/5           _KLTComputeSmoothedImage [64]
+                0.00    0.00       2/2           _KLTComputePyramid [67]
+-----------------------------------------------
+                0.00    0.00       1/1           KLTCreateTrackingContext [16]
+[19]     0.0    0.00    0.00       1         KLTUpdateTCBorder [19]
+                0.00    0.00       2/2           _KLTGetKernelWidths [68]
+                0.00    0.00       1/4           _KLTComputeSmoothSigma [65]
+-----------------------------------------------
+                0.00    0.00    9800/19600       _computeIntensityDifference [51]
+                0.00    0.00    9800/19600       KLTTrackFeatures [18]
+[47]     0.0    0.00    0.00   19600         _interpolate [47]
+-----------------------------------------------
+                0.00    0.00     200/200         _computeGradientSum_CUDA [50]
+[48]     0.0    0.00    0.00     200         _computeGradientSumKernel(float const*, float const*, float const*, float const*, float, float, float, float, int, int, int, int, float*, float*) [48]
+-----------------------------------------------
+                0.00    0.00     200/200         _computeGradientSum_CUDA [50]
+[49]     0.0    0.00    0.00     200         __device_stub__Z25_computeGradientSumKernelPKfS0_S0_S0_ffffiiiiPfS1_(float const*, float const*, float const*, float const*, float, float, float, float, int, int, int, int, float*, float*) [49]
+-----------------------------------------------
+                0.00    0.00     200/200         KLTTrackFeatures [18]
+[50]     0.0    0.00    0.00     200         _computeGradientSum_CUDA [50]
+                0.00    0.00     200/200         __device_stub__Z25_computeGradientSumKernelPKfS0_S0_S0_ffffiiiiPfS1_(float const*, float const*, float const*, float const*, float, float, float, float, int, int, int, int, float*, float*) [49]
+                0.00    0.00     200/200         _computeGradientSumKernel(float const*, float const*, float const*, float const*, float, float, float, float, int, int, int, int, float*, float*) [48]
+-----------------------------------------------
+                0.00    0.00     200/200         KLTTrackFeatures [18]
+[51]     0.0    0.00    0.00     200         _computeIntensityDifference [51]
+                0.00    0.00    9800/19600       _interpolate [47]
+-----------------------------------------------
+                0.00    0.00       2/21          _KLTComputePyramid [67]
+                0.00    0.00       3/21          KLTTrackFeatures [18]
+                0.00    0.00       4/21          _KLTSelectGoodFeatures [3]
+                0.00    0.00      12/21          _KLTCreatePyramid [61]
+[52]     0.0    0.00    0.00      21         _KLTCreateFloatImage [52]
+-----------------------------------------------
+                0.00    0.00       1/21          KLTSelectGoodFeatures [1]
+                0.00    0.00       2/21          _KLTComputePyramid [67]
+                0.00    0.00       3/21          _KLTSelectGoodFeatures [3]
+                0.00    0.00       3/21          KLTTrackFeatures [18]
+                0.00    0.00      12/21          _KLTFreePyramid [62]
+[53]     0.0    0.00    0.00      21         _KLTFreeFloatImage [53]
+-----------------------------------------------
+                0.00    0.00      10/10          _convolveImageVertGPU [60]
+[54]     0.0    0.00    0.00      10         convolveImageVertKernel(float const*, float*, float const*, int, int, int) [54]
+-----------------------------------------------
+                0.00    0.00      10/10          _convolveImageHorizGPU [59]
+[55]     0.0    0.00    0.00      10         convolveImageHorizKernel(float const*, float*, float const*, int, int, int) [55]
+-----------------------------------------------
+                0.00    0.00      10/10          _convolveImageVertGPU [60]
+[56]     0.0    0.00    0.00      10         __device_stub__Z23convolveImageVertKernelPKfPfS0_iii(float const*, float*, float const*, int, int, int) [56]
+-----------------------------------------------
+                0.00    0.00      10/10          _convolveImageHorizGPU [59]
+[57]     0.0    0.00    0.00      10         __device_stub__Z24convolveImageHorizKernelPKfPfS0_iii(float const*, float*, float const*, int, int, int) [57]
+-----------------------------------------------
+                0.00    0.00       2/10          _KLTGetKernelWidths [68]
+                0.00    0.00       3/10          _KLTComputeGradients [63]
+                0.00    0.00       5/10          _KLTComputeSmoothedImage [64]
+[58]     0.0    0.00    0.00      10         _computeKernels(float, ConvolutionKernel*, ConvolutionKernel*) [clone .constprop.0] [58]
+-----------------------------------------------
+                0.00    0.00       5/10          _KLTComputeGradients [63]
+                0.00    0.00       5/10          _KLTComputeSmoothedImage [64]
+[59]     0.0    0.00    0.00      10         _convolveImageHorizGPU [59]
+                0.00    0.00      10/10          __device_stub__Z24convolveImageHorizKernelPKfPfS0_iii(float const*, float*, float const*, int, int, int) [57]
+                0.00    0.00      10/10          convolveImageHorizKernel(float const*, float*, float const*, int, int, int) [55]
+-----------------------------------------------
+                0.00    0.00       5/10          _KLTComputeGradients [63]
+                0.00    0.00       5/10          _KLTComputeSmoothedImage [64]
+[60]     0.0    0.00    0.00      10         _convolveImageVertGPU [60]
+                0.00    0.00      10/10          __device_stub__Z23convolveImageVertKernelPKfPfS0_iii(float const*, float*, float const*, int, int, int) [56]
+                0.00    0.00      10/10          convolveImageVertKernel(float const*, float*, float const*, int, int, int) [54]
+-----------------------------------------------
+                0.00    0.00       6/6           KLTTrackFeatures [18]
+[61]     0.0    0.00    0.00       6         _KLTCreatePyramid [61]
+                0.00    0.00      12/21          _KLTCreateFloatImage [52]
+-----------------------------------------------
+                0.00    0.00       6/6           KLTTrackFeatures [18]
+[62]     0.0    0.00    0.00       6         _KLTFreePyramid [62]
+                0.00    0.00      12/21          _KLTFreeFloatImage [53]
+-----------------------------------------------
+                0.00    0.00       1/5           _KLTSelectGoodFeatures [3]
+                0.00    0.00       4/5           KLTTrackFeatures [18]
+[63]     0.0    0.00    0.00       5         _KLTComputeGradients [63]
+                0.00    0.00       5/10          _convolveImageHorizGPU [59]
+                0.00    0.00       5/10          _convolveImageVertGPU [60]
+                0.00    0.00       3/10          _computeKernels(float, ConvolutionKernel*, ConvolutionKernel*) [clone .constprop.0] [58]
+-----------------------------------------------
+                0.00    0.00       1/5           _KLTSelectGoodFeatures [3]
+                0.00    0.00       2/5           KLTTrackFeatures [18]
+                0.00    0.00       2/5           _KLTComputePyramid [67]
+[64]     0.0    0.00    0.00       5         _KLTComputeSmoothedImage [64]
+                0.00    0.00       5/10          _convolveImageHorizGPU [59]
+                0.00    0.00       5/10          _convolveImageVertGPU [60]
+                0.00    0.00       5/10          _computeKernels(float, ConvolutionKernel*, ConvolutionKernel*) [clone .constprop.0] [58]
+-----------------------------------------------
+                0.00    0.00       1/4           _KLTSelectGoodFeatures [3]
+                0.00    0.00       1/4           KLTUpdateTCBorder [19]
+                0.00    0.00       2/4           KLTTrackFeatures [18]
+[65]     0.0    0.00    0.00       4         _KLTComputeSmoothSigma [65]
+-----------------------------------------------
+                0.00    0.00       1/3           _KLTSelectGoodFeatures [3]
+                0.00    0.00       2/3           KLTTrackFeatures [18]
+[66]     0.0    0.00    0.00       3         _KLTToFloatImage [66]
+-----------------------------------------------
+                0.00    0.00       2/2           KLTTrackFeatures [18]
+[67]     0.0    0.00    0.00       2         _KLTComputePyramid [67]
+                0.00    0.00       2/21          _KLTCreateFloatImage [52]
+                0.00    0.00       2/5           _KLTComputeSmoothedImage [64]
+                0.00    0.00       2/21          _KLTFreeFloatImage [53]
+-----------------------------------------------
+                0.00    0.00       2/2           KLTUpdateTCBorder [19]
+[68]     0.0    0.00    0.00       2         _KLTGetKernelWidths [68]
+                0.00    0.00       2/10          _computeKernels(float, ConvolutionKernel*, ConvolutionKernel*) [clone .constprop.0] [58]
+-----------------------------------------------
+                0.00    0.00       2/2           KLTWriteFeatureList [6]
+[69]     0.0    0.00    0.00       2         _findStringWidth [69]
+-----------------------------------------------
+                0.00    0.00       2/2           KLTWriteFeatureList [6]
+[70]     0.0    0.00    0.00       2         _printSetupTxt [70]
+-----------------------------------------------
+
+ This table describes the call tree of the program, and was sorted by
+ the total amount of time spent in each function and its children.
+
+ Each entry in this table consists of several lines.  The line with the
+ index number at the left hand margin lists the current function.
+ The lines above it list the functions that called this function,
+ and the lines below it list the functions this one called.
+ This line lists:
+     index	A unique number given to each element of the table.
+		Index numbers are sorted numerically.
+		The index number is printed next to every function name so
+		it is easier to look up where the function is in the table.
+
+     % time	This is the percentage of the `total' time that was spent
+		in this function and its children.  Note that due to
+		different viewpoints, functions excluded by options, etc,
+		these numbers will NOT add up to 100%.
+
+     self	This is the total amount of time spent in this function.
+
+     children	This is the total amount of time propagated into this
+		function by its children.
+
+     called	This is the number of times the function was called.
+		If the function called itself recursively, the number
+		only includes non-recursive calls, and is followed by
+		a `+' and the number of recursive calls.
+
+     name	The name of the current function.  The index number is
+		printed after it.  If the function is a member of a
+		cycle, the cycle number is printed between the
+		function's name and the index number.
+
+
+ For the function's parents, the fields have the following meanings:
+
+     self	This is the amount of time that was propagated directly
+		from the function into this parent.
+
+     children	This is the amount of time that was propagated from
+		the function's children into this parent.
+
+     called	This is the number of times this parent called the
+		function `/' the total number of times the function
+		was called.  Recursive calls to the function are not
+		included in the number after the `/'.
+
+     name	This is the name of the parent.  The parent's index
+		number is printed after it.  If the parent is a
+		member of a cycle, the cycle number is printed between
+		the name and the index number.
+
+ If the parents of the function cannot be determined, the word
+ `<spontaneous>' is printed in the `name' field, and all the other
+ fields are blank.
+
+ For the function's children, the fields have the following meanings:
+
+     self	This is the amount of time that was propagated directly
+		from the child into the function.
+
+     children	This is the amount of time that was propagated from the
+		child's children to the function.
+
+     called	This is the number of times the function called
+		this child `/' the total number of times the child
+		was called.  Recursive calls by the child are not
+		listed in the number after the `/'.
+
+     name	This is the name of the child.  The child's index
+		number is printed after it.  If the child is a
+		member of a cycle, the cycle number is printed
+		between the name and the index number.
+
+ If there are any cycles (circles) in the call graph, there is an
+ entry for the cycle-as-a-whole.  This entry shows who called the
+ cycle (as parents) and the members of the cycle (as children.)
+ The `+' recursive calls entry shows the number of function calls that
+ were internal to the cycle, and the calls entry for each member shows,
+ for that member, how many times it was called from other members of
+ the cycle.
+
+Copyright (C) 2012-2024 Free Software Foundation, Inc.
+
+Copying and distribution of this file, with or without modification,
+are permitted in any medium without royalty provided the copyright
+notice and this notice are preserved.
+
+Index by function name
+
+  [14] KLTChangeTCPyramid     [52] _KLTCreateFloatImage   [50] _computeGradientSum_CUDA
+   [5] KLTCountRemainingFeatures [61] _KLTCreatePyramid   [51] _computeIntensityDifference
+  [15] KLTCreateFeatureList   [53] _KLTFreeFloatImage     [59] _convolveImageHorizGPU
+  [16] KLTCreateTrackingContext [62] _KLTFreePyramid      [60] _convolveImageVertGPU
+  [17] KLTPrintTrackingContext [68] _KLTGetKernelWidths   [69] _findStringWidth
+   [1] KLTSelectGoodFeatures   [3] _KLTSelectGoodFeatures [47] _interpolate
+  [18] KLTTrackFeatures       [66] _KLTToFloatImage       [70] _printSetupTxt
+  [19] KLTUpdateTCBorder      [54] convolveImageVertKernel(float const*, float*, float const*, int, int, int) [4] _quicksort
+   [6] KLTWriteFeatureList    [55] convolveImageHorizKernel(float const*, float*, float const*, int, int, int) [8] pgmRead
+   [7] KLTWriteFeatureListToPPM [48] _computeGradientSumKernel(float const*, float const*, float const*, float const*, float, float, float, float, int, int, int, int, float*, float*) [9] pgmReadFile
+  [63] _KLTComputeGradients   [56] __device_stub__Z23convolveImageVertKernelPKfPfS0_iii(float const*, float*, float const*, int, int, int) [10] pgmReadHeader
+  [67] _KLTComputePyramid     [57] __device_stub__Z24convolveImageHorizKernelPKfPfS0_iii(float const*, float*, float const*, int, int, int) [11] pnmReadHeader
+  [65] _KLTComputeSmoothSigma [49] __device_stub__Z25_computeGradientSumKernelPKfS0_S0_S0_ffffiiiiPfS1_(float const*, float const*, float const*, float const*, float, float, float, float, int, int, int, int, float*, float*) [12] ppmWrite
+  [64] _KLTComputeSmoothedImage [58] _computeKernels(float, ConvolutionKernel*, ConvolutionKernel*) [clone .constprop.0] [13] ppmWriteFileRGB
