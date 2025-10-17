@@ -258,6 +258,44 @@ void _KLTSelectGoodFeaturesGPU(
     cudaMemcpy(eigvals, d_eigvals, ncols*nrows*sizeof(float), cudaMemcpyDeviceToHost);
 
     /* TODO: convert eigvals -> pointlist, sort, enforce minimum distance on CPU */
+    // Create pointlist (x, y, value) from GPU eigenvalues
+    int *pointlist = (int *) malloc(ncols * nrows * 3 * sizeof(int));
+    int npoints = 0;
+    unsigned int limit = 1;
+    for (int i = 0; i < sizeof(int); i++) limit *= 256;
+    limit = limit/2 - 1;
+
+    int borderx = tc->borderx;
+    int bordery = tc->bordery;
+    if (borderx < tc->window_width/2) borderx = tc->window_width/2;
+    if (bordery < tc->window_height/2) bordery = tc->window_height/2;
+
+    int *ptr = pointlist;
+    for (int y = bordery; y < nrows - bordery; y += tc->nSkippedPixels+1)
+        for (int x = borderx; x < ncols - borderx; x += tc->nSkippedPixels+1) {
+            *ptr++ = x;
+            *ptr++ = y;
+            float val = eigvals[y*ncols + x];
+            if (val > limit) val = (float) limit;
+            *ptr++ = (int) val;
+            npoints++;
+        }
+
+    // Sort the pointlist (CPU)
+    _sortPointList(pointlist, npoints);
+
+    // Enforce minimum distance and fill featurelist (CPU)
+    _enforceMinimumDistance(
+        pointlist, npoints, featurelist,
+        ncols, nrows,
+        tc->mindist,
+        tc->min_eigenvalue,
+        (mode == SELECTING_ALL)
+    );
+
+    // Free temporary memory
+    free(pointlist);
+    free(eigvals);
 
     cudaFree(d_gradx); cudaFree(d_grady); cudaFree(d_eigvals);
     _KLTFreeFloatImage(floatimg);
