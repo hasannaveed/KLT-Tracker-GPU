@@ -1,83 +1,91 @@
 ######################################################################
-# Choose your compilers
+# CUDA-ready Makefile for KLT (with computeGradientSum.cu)
 ######################################################################
-CC   = gcc
+
+# CUDA compiler
 NVCC = nvcc
 
-######################################################################
-# Compilation Flags
-######################################################################
-FLAG1  = -DNDEBUG
-CFLAGS = -O3 -pg $(FLAG1)
-NVFLAGS = -std=c++14 -arch=sm_75
+# Compiler flags
+NVCCFLAGS = -O3 -Xcompiler -fPIC -DNDEBUG
 
-######################################################################
-# Source Files
-######################################################################
-EXAMPLES = example1.c example2.c example3.c example4.c example5.c
-ARCH = convolve.c error.c pnmio.c pyramid.c selectGoodFeatures.c \
-       storeFeatures.c trackFeatures.c klt.c klt_util.c writeFeatures.c
-
-######################################################################
 # Libraries
-######################################################################
-LIB = -L/usr/local/lib -L/usr/lib -lm -lcudart
-INCLUDE = -I/usr/local/cuda/include
+LIBS = -lm -lcudart
+
+# Source files for the library
+SRC_LIB = convolve.cu computeGradientSum.cu error.c pnmio.c pyramid.c \
+          selectGoodFeatures.c storeFeatures.c trackFeatures.c klt.c \
+          klt_util.c writeFeatures.c
+
+# Source files for examples
+SRC_EXAMPLES = example1.c example2.c example3.c example4.c example5.c
+
+# Object files
+OBJ_LIB = $(SRC_LIB:.c=.o)
+OBJ_LIB := $(OBJ_LIB:.cu=.o)
+
+OBJ_EXAMPLES = $(SRC_EXAMPLES:.c=.o)
+
+# Library name
+LIB = libklt.a
 
 ######################################################################
-# Object Files
+# Default target
 ######################################################################
-OBJS = $(ARCH:.c=.o) computeGradientSum.o
+
+all: $(SRC_EXAMPLES:.c=)
 
 ######################################################################
-# Default Target
+# Compilation rules
 ######################################################################
-all: libgpu $(EXAMPLES:.c=)
+
+# Compile CUDA files
+%.o: %.cu
+	$(NVCC) -c $(NVCCFLAGS) $< -o $@
+
+# Compile C files
+%.o: %.c
+	$(NVCC) -c $(NVCCFLAGS) $< -o $@
 
 ######################################################################
-# Compile Rules
+# Build static library
 ######################################################################
-.c.o:
-	$(CC) -c $(CFLAGS) $< -o $@
 
-computeGradientSum.o: computeGradientSum.cu
-	$(NVCC) -c $(NVFLAGS) computeGradientSum.cu -o computeGradientSum.o
-
-######################################################################
-# Library Build
-######################################################################
-libgpu: $(OBJS)
-	rm -f libklt_gpu.a
-	ar ruv libklt_gpu.a $(OBJS)
-	rm -f $(ARCH:.c=.o)
+$(LIB): $(OBJ_LIB)
+	ar ruv $(LIB) $(OBJ_LIB)
+	@echo "Static library $(LIB) built."
 
 ######################################################################
-# Example Builds (GPU linked)
+# Build examples
 ######################################################################
-example1: libklt_gpu.a
-	$(CC) -O3 $(CFLAGS) -o $@ $@.c -L. -lklt_gpu $(LIB)
 
-example2: libklt_gpu.a
-	$(CC) -O3 $(CFLAGS) -o $@ $@.c -L. -lklt_gpu $(LIB)
-
-example3: libklt_gpu.a
-	$(CC) -O3 $(CFLAGS) -o $@ $@.c -L. -lklt_gpu $(LIB)
-
-example4: libklt_gpu.a
-	$(CC) -O3 $(CFLAGS) -o $@ $@.c -L. -lklt_gpu $(LIB)
-
-example5: libklt_gpu.a
-	$(CC) -O3 $(CFLAGS) -o $@ $@.c -L. -lklt_gpu $(LIB)
+$(SRC_EXAMPLES:.c=): %: %.o $(LIB)
+	$(NVCC) $(NVCCFLAGS) -o $@ $< $(LIB) $(LIBS)
+	@echo "Built example: $@"
 
 ######################################################################
-# Profiling Targets
+# Dependency (optional)
 ######################################################################
+
+depend:
+	makedepend $(SRC_LIB) $(SRC_EXAMPLES)
+
+######################################################################
+# Clean up
+######################################################################
+
+clean:
+	rm -f $(OBJ_LIB) $(OBJ_EXAMPLES) $(SRC_EXAMPLES:.c=) $(LIB)
+	@echo "Cleaned all build files."
+
+######################################################################
+# Profiling (optional)
+######################################################################
+
 PROFILES_DIR = profiles
 
-# Generate gprof text reports for all examples
-profile: $(EXAMPLES:.c=)
+profile: $(SRC_EXAMPLES:.c=)
 	mkdir -p $(PROFILES_DIR)
-	@for exe in $(EXAMPLES:.c=); do \
+	@for exe in $(SRC_EXAMPLES:.c=); do \
 	    echo "=============================================="; \
 	    echo "Running $$exe for profiling..."; \
 	    ./$$exe; \
@@ -85,29 +93,8 @@ profile: $(EXAMPLES:.c=)
 	    gprof $$exe gmon.out > $(PROFILES_DIR)/gprof_$$exe.txt; \
 	    echo "Saved: $(PROFILES_DIR)/gprof_$$exe.txt"; \
 	done
-	@echo "=============================================="
-	@echo "All gprof text reports generated successfully in $(PROFILES_DIR)/"
+	@echo "All profiling reports saved in $(PROFILES_DIR)/"
 
-# Generate call graph PNGs from gprof text reports
-all-graph:
-	mkdir -p $(PROFILES_DIR)
-	@for txt in $(PROFILES_DIR)/gprof_*.txt; do \
-	    exe=$$(basename $$txt .txt | sed 's/^gprof_//'); \
-	    echo "Generating call graph for $$exe..."; \
-	    gprof2dot -f prof $$txt | dot -Tpng -o $(PROFILES_DIR)/profile_$$exe.png; \
-	    echo "Saved: $(PROFILES_DIR)/profile_$$exe.png"; \
-	done
-	@echo "=============================================="
-	@echo "All call graph images generated successfully in $(PROFILES_DIR)/"
-
-# Clean all profiling-related files (safe to use)
 clean-profile:
-	@echo "Cleaning profiling files..."
 	rm -rf $(PROFILES_DIR) gmon.out
-	@echo "Profiling data cleaned successfully."
-
-######################################################################
-# Cleanup
-######################################################################
-clean:
-	rm -f *.o *.a $(EXAMPLES:.c=) *.ppm *.txt *.fl *.pgm libklt_gpu.a
+	@echo "Cleaned profiling data."

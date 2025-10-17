@@ -459,6 +459,9 @@ static int _trackFeature(
                                   width, height, imgdiff);
 	/*_computeGradientSum(gradx1, grady1, gradx2, grady2,
 			  x1, y1, *x2, *y2, width, height, gradx, grady);*/
+        
+///printf("[DEBUG] gradx pointer in CUDA = %p, grady pointer = %p\n", gradx, grady);
+
 	  _computeGradientSum_CUDA(gradx1, grady1, gradx2, grady2,
 			  x1, y1, *x2, *y2, width, height, gradx, grady);
 

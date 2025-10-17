@@ -25,8 +25,8 @@ int main()
   KLTPrintTrackingContext(tc);
   fl = KLTCreateFeatureList(nFeatures);
 
-  img1 = pgmReadFile("img0.pgm", NULL, &ncols, &nrows);
-  img2 = pgmReadFile("img1.pgm", NULL, &ncols, &nrows);
+  img1 = pgmReadFile("../../data/img0.pgm", NULL, &ncols, &nrows);
+  img2 = pgmReadFile("../../data/img0.pgm", NULL, &ncols, &nrows);
 
   KLTSelectGoodFeatures(tc, img1, ncols, nrows, fl);
 
