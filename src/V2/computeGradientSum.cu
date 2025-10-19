@@ -49,6 +49,7 @@ __global__ void _computeGradientSumKernel(
     int win_w, int win_h,
     float* gradx_out, float* grady_out)
 {
+    printf("GPU riunning\n");
     int idx = threadIdx.x + blockIdx.x * blockDim.x;
     if (idx >= win_w * win_h) return;
 
