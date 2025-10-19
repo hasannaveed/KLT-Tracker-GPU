@@ -31,25 +31,6 @@ typedef float *_FloatWindow;
  * gray-level value of the point in the image.  
  */
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-	void _computeGradientSum_CUDA(
-		_KLT_FloatImage gradx1,
-		_KLT_FloatImage grady1,
-		_KLT_FloatImage gradx2,
-		_KLT_FloatImage grady2,
-		float x1, float y1,
-		float x2, float y2,
-		int width, int height,
-		_FloatWindow gradx,
-		_FloatWindow grady);
-
-#ifdef __cplusplus
-}
-#endif
-
 static float _interpolate(
   float x, 
   float y, 
@@ -457,20 +438,8 @@ static int _trackFeature(
     } else {
       _computeIntensityDifference(img1, img2, x1, y1, *x2, *y2, 
                                   width, height, imgdiff);
-	/*_computeGradientSum(gradx1, grady1, gradx2, grady2,
-			  x1, y1, *x2, *y2, width, height, gradx, grady);*/
-        
-///printf("[DEBUG] gradx pointer in CUDA = %p, grady pointer = %p\n", gradx, grady);
-
-	//#ifdef USE_GPU
-		  //_computeGradientSum_CUDA(gradx1, grady1, gradx2, grady2,
-			  //x1, y1, *x2, *y2, width, height, gradx, grady);
-	//#else
-		  _computeGradientSum(gradx1, grady1, gradx2, grady2,
+	_computeGradientSum(gradx1, grady1, gradx2, grady2,
 			  x1, y1, *x2, *y2, width, height, gradx, grady);
-	//#endif
-
-
     }
 		
 
@@ -1063,14 +1032,8 @@ static int _am_trackFeatureAffine(
       } else {
         _computeIntensityDifference(img1, img2, x1, y1, *x2, *y2, 
                                     width, height, imgdiff);
-		#ifdef USE_GPU
-				_computeGradientSum_CUDA(gradx1, grady1, gradx2, grady2,
+		_computeGradientSum(gradx1, grady1, gradx2, grady2,
 					x1, y1, *x2, *y2, width, height, gradx, grady);
-		#else
-				_computeGradientSum(gradx1, grady1, gradx2, grady2,
-					x1, y1, *x2, *y2, width, height, gradx, grady);
-		#endif
-
       }
       
 #ifdef DEBUG_AFFINE_MAPPING	
