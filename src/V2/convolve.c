@@ -139,6 +139,7 @@ static void _convolveImageHoriz(
   ConvolutionKernel kernel,
   _KLT_FloatImage imgout)
 {
+  printf("CPU running : convolve image horz \n");
   float *ptrrow = imgin->data;           /* Points to row's first pixel */
   register float *ptrout = imgout->data, /* Points to next output pixel */
     *ppp;
@@ -191,6 +192,7 @@ static void _convolveImageVert(
   ConvolutionKernel kernel,
   _KLT_FloatImage imgout)
 {
+  printf("CPU running : convolve image horz \n");
   float *ptrcol = imgin->data;            /* Points to row's first pixel */
   register float *ptrout = imgout->data,  /* Points to next output pixel */
     *ppp;

@@ -178,6 +178,7 @@ static float _minEigenvalue(float gxx, float gxy, float gyy)
 /* GPU min eigenvalue */
 __device__ float minEigenvalueGPU(float gxx, float gxy, float gyy)
 {
+  //printf("GPU riunning eigenvlaue\n");
   return 0.5f * (gxx + gyy - sqrtf((gxx - gyy)*(gxx - gyy) + 4.0f*gxy*gxy));
 }
 
@@ -190,7 +191,7 @@ __global__ void computeTrackabilityKernel(
     int borderx, int bordery,
     float* eigvals
 ) {
-    printf("GPU running\n");
+    printf("GPU running compute kernel: selectgoodfeatire\n");
     int x = borderx + blockIdx.x * blockDim.x + threadIdx.x;
     int y = bordery + blockIdx.y * blockDim.y + threadIdx.y;
 

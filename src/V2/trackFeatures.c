@@ -109,6 +109,7 @@ static void _computeGradientSum(
   _FloatWindow gradx,      /* output */
   _FloatWindow grady)      /*   " */
 {
+  printf("CPU running: compute gradient sum\n");
   register int hw = width/2, hh = height/2;
   float g1, g2;
   register int i, j;

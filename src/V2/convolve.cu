@@ -43,6 +43,7 @@ __global__ void convolveImageHorizKernel(
     const float* kernel, int kwidth,
     int ncols, int nrows)
 {
+    printf("GPU riunning convole image horiz\n");
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
     if (x >= ncols || y >= nrows) return;
@@ -66,6 +67,7 @@ __global__ void convolveImageVertKernel(
     const float* kernel, int kwidth,
     int ncols, int nrows)
 {
+    printf("GPU riunning convoloe image vert\n");
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
     if (x >= ncols || y >= nrows) return;
