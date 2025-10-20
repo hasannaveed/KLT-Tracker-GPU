@@ -32,7 +32,7 @@ CPU_EXES = $(EXAMPLES:.c=_CPU)
 
 .PHONY: cpu
 cpu: $(CPU_LIB) $(CPU_EXES)
-	@echo "✅ CPU build complete!"
+	@echo "CPU build complete!"
 
 $(CPU_LIB): $(CPU_OBJS)
 	$(AR) rcs $@ $^
@@ -50,7 +50,7 @@ GPU_EXES = $(EXAMPLES:.c=_GPU)
 
 .PHONY: gpu
 gpu: $(GPU_LIB) $(GPU_EXES)
-	@echo "🚀 GPU build complete!"
+	@echo "GPU build complete!"
 
 $(GPU_LIB): $(GPU_OBJS)
 	$(AR) rcs $@ $^
@@ -85,7 +85,7 @@ $(OBJDIR_CPU)/%.o: %.c
 clean:
 	rm -rf $(OBJDIR_CPU) $(OBJDIR_GPU)
 	rm -f *.a *_CPU *_GPU feat.ppm features.* *.tar *.tar.gz
-	@echo "🧹 Cleaned all build files."
+	@echo "Cleaned all build files."
 
 ######################################################################
 # Profiling (CPU = gprof, GPU = Nsight Compute → text only)
@@ -109,7 +109,7 @@ cpu_profile:
 gpu_profile:
 	$(MAKE) clean
 	$(MAKE) NVCCFLAGS="$(NVCCFLAGS) $(PROFILE_FLAGS)" gpu
-	@echo "🚀 GPU profiling build ready for Nsight Compute."
+	@echo "GPU profiling build ready for Nsight Compute."
 
 # --------------------------------------------------------------------
 # Run CPU examples under gprof and save reports to profiles/
@@ -123,10 +123,10 @@ profile:
 	        ./$$exe"_CPU"; \
 	        echo "Generating gprof report for $${exe}_CPU..."; \
 	        gprof $${exe}_CPU gmon.out > $(PROFILES_DIR)/gprof_$${exe}_CPU.txt; \
-	        echo "✅ Saved: $(PROFILES_DIR)/gprof_$${exe}_CPU.txt"; \
+	        echo "Saved: $(PROFILES_DIR)/gprof_$${exe}_CPU.txt"; \
 	    fi; \
 	done
-	@echo "✅ CPU profiling reports saved in $(PROFILES_DIR)/"
+	@echo "CPU profiling reports saved in $(PROFILES_DIR)/"
 
 gpu_nsys:
 	mkdir -p $(PROFILES_DIR)
@@ -144,10 +144,10 @@ gpu_nsys:
 	            $(PROFILES_DIR)/nsys_$${exe}_GPU.qdrep \
 	            --report summary,cudaapisum,gpukernsum \
 	            > $(PROFILES_DIR)/nsys_$${exe}_GPU.txt; \
-	        echo "✅ Saved: $(PROFILES_DIR)/nsys_$${exe}_GPU.txt"; \
+	        echo "Saved: $(PROFILES_DIR)/nsys_$${exe}_GPU.txt"; \
 	    fi; \
 	done
-	@echo "📊 GPU profiling summaries saved in $(PROFILES_DIR)/"
+	@echo "GPU profiling summaries saved in $(PROFILES_DIR)/"
 
 
 
@@ -159,9 +159,9 @@ all-graph:
 	mkdir -p $(PROFILES_DIR)
 	@for txt in $(PROFILES_DIR)/gprof_*.txt; do \
 	    exe=$$(basename $$txt .txt | sed 's/^gprof_//'); \
-	    echo "📈 Generating call graph for $$exe..."; \
+	    echo "Generating call graph for $$exe..."; \
 	    gprof2dot -f prof $$txt | dot -Tpng -o $(PROFILES_DIR)/profile_$${exe}.png; \
-	    echo "✅ Saved: $(PROFILES_DIR)/profile_$${exe}.png"; \
+	    echo "Saved: $(PROFILES_DIR)/profile_$${exe}.png"; \
 	done
 
 # --------------------------------------------------------------------
@@ -169,4 +169,4 @@ all-graph:
 # --------------------------------------------------------------------
 clean-profile:
 	rm -rf $(PROFILES_DIR) gmon.out
-	@echo "🧹 Cleaned profiling data."
+	@echo "Cleaned profiling data."
