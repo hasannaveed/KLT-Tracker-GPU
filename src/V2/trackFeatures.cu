@@ -17,7 +17,7 @@
 #include "klt_util.h"	/* _KLT_FloatImage */
 #include "pyramid.h"	/* _KLT_Pyramid */
 
-
+int n=0;
 
 
 extern int KLT_verbose;
@@ -62,7 +62,7 @@ __global__ void _computeGradientSumKernel(
     int win_w, int win_h,
     float* gradx_out, float* grady_out)
 {
-    printf("GPU riunning compute gradient kernel\n");
+    //printf("GPU riunning compute gradient kernel\n");
     int idx = threadIdx.x + blockIdx.x * blockDim.x;
     if (idx >= win_w * win_h) return;
 
@@ -579,7 +579,8 @@ static int _trackFeature(
 
 	  _computeGradientSum_CUDA(gradx1, grady1, gradx2, grady2,
 			  x1, y1, *x2, *y2, width, height, gradx, grady);
-
+      n++;
+      //printf("[compute gradient cuda sum called]: %d",n);
 
     }
 		

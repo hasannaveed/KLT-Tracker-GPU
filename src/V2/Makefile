@@ -11,7 +11,7 @@ NVCCFLAGS = -O3 -std=c++14 -arch=sm_75 -DNDEBUG -Xcompiler -fPIC
 LIBS_CPU  = -lm
 LIBS_GPU  = -lm -lcudart
 
-COMMON_C = error.c pnmio.c pyramid.c storeFeatures.c klt.c klt_util.c writeFeatures.c
+COMMON_C = error.c pnmio.c pyramid.c storeFeatures.c klt.c klt_util.c writeFeatures.c 
 EXAMPLES = example1.c example2.c example3.c example4.c example5.c
 
 CPU_SRC = convolve.c selectGoodFeatures.c trackFeatures.c $(COMMON_C)
@@ -86,3 +86,87 @@ clean:
 	rm -rf $(OBJDIR_CPU) $(OBJDIR_GPU)
 	rm -f *.a *_CPU *_GPU feat.ppm features.* *.tar *.tar.gz
 	@echo "🧹 Cleaned all build files."
+
+######################################################################
+# Profiling (CPU = gprof, GPU = Nsight Compute → text only)
+######################################################################
+PROFILES_DIR = profiles
+PROFILE_FLAGS = -pg -g
+
+.PHONY: cpu_profile gpu_profile profile gpu_nsys all-graph clean-profile
+
+# --------------------------------------------------------------------
+# CPU profiling build (adds -pg and -g flags)
+# --------------------------------------------------------------------
+cpu_profile:
+	$(MAKE) clean
+	$(MAKE) CFLAGS="$(CFLAGS) $(PROFILE_FLAGS)" cpu
+	@echo "🧭 CPU profiling build ready. Run ./exampleX_CPU to collect gmon.out data."
+
+# --------------------------------------------------------------------
+# GPU profiling build (adds debug symbols)
+# --------------------------------------------------------------------
+gpu_profile:
+	$(MAKE) clean
+	$(MAKE) NVCCFLAGS="$(NVCCFLAGS) $(PROFILE_FLAGS)" gpu
+	@echo "🚀 GPU profiling build ready for Nsight Compute."
+
+# --------------------------------------------------------------------
+# Run CPU examples under gprof and save reports to profiles/
+# --------------------------------------------------------------------
+profile:
+	mkdir -p $(PROFILES_DIR)
+	@for exe in $(EXAMPLES:.c=); do \
+	    if [ -f "$${exe}_CPU" ]; then \
+	        echo "=============================================="; \
+	        echo "Running $${exe}_CPU for profiling..."; \
+	        ./$$exe"_CPU"; \
+	        echo "Generating gprof report for $${exe}_CPU..."; \
+	        gprof $${exe}_CPU gmon.out > $(PROFILES_DIR)/gprof_$${exe}_CPU.txt; \
+	        echo "✅ Saved: $(PROFILES_DIR)/gprof_$${exe}_CPU.txt"; \
+	    fi; \
+	done
+	@echo "✅ CPU profiling reports saved in $(PROFILES_DIR)/"
+
+gpu_nsys:
+	mkdir -p $(PROFILES_DIR)
+	@for exe in $(EXAMPLES:.c=); do \
+	    if [ -f "$${exe}_GPU" ]; then \
+	        echo "=============================================="; \
+	        echo "Profiling $${exe}_GPU with Nsight Systems..."; \
+	        /opt/nvidia/nsight-systems/2022.4.2/target-linux-x64/nsys profile \
+	            --sample=none --trace=cuda,nvtx,osrt \
+	            --force-overwrite=true \
+	            -o $(PROFILES_DIR)/nsys_$${exe}_GPU \
+	            ./$$exe"_GPU"; \
+	        echo "Generating text summary for $${exe}_GPU..."; \
+	        /opt/nvidia/nsight-systems/2022.4.2/target-linux-x64/nsys stats \
+	            $(PROFILES_DIR)/nsys_$${exe}_GPU.qdrep \
+	            --report summary,cudaapisum,gpukernsum \
+	            > $(PROFILES_DIR)/nsys_$${exe}_GPU.txt; \
+	        echo "✅ Saved: $(PROFILES_DIR)/nsys_$${exe}_GPU.txt"; \
+	    fi; \
+	done
+	@echo "📊 GPU profiling summaries saved in $(PROFILES_DIR)/"
+
+
+
+
+# --------------------------------------------------------------------
+# Generate call graphs for CPU profiles
+# --------------------------------------------------------------------
+all-graph:
+	mkdir -p $(PROFILES_DIR)
+	@for txt in $(PROFILES_DIR)/gprof_*.txt; do \
+	    exe=$$(basename $$txt .txt | sed 's/^gprof_//'); \
+	    echo "📈 Generating call graph for $$exe..."; \
+	    gprof2dot -f prof $$txt | dot -Tpng -o $(PROFILES_DIR)/profile_$${exe}.png; \
+	    echo "✅ Saved: $(PROFILES_DIR)/profile_$${exe}.png"; \
+	done
+
+# --------------------------------------------------------------------
+# Clean up profiling outputs
+# --------------------------------------------------------------------
+clean-profile:
+	rm -rf $(PROFILES_DIR) gmon.out
+	@echo "🧹 Cleaned profiling data."

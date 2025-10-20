@@ -43,7 +43,7 @@ __global__ void convolveImageHorizKernel(
     const float* kernel, int kwidth,
     int ncols, int nrows)
 {
-    printf("GPU riunning convole image horiz\n");
+    //printf("[GPU]convolve horz runnning      ");
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
     if (x >= ncols || y >= nrows) return;
@@ -51,23 +51,29 @@ __global__ void convolveImageHorizKernel(
     int radius = kwidth / 2;
     float sum = 0.0f;
 
+    // Left/right boundaries
     if (x < radius || x >= ncols - radius) {
         imgout[y * ncols + x] = 0.0f;
         return;
     }
 
-    for (int k = -radius; k <= radius; ++k)
-        sum += imgin[y * ncols + (x + k)] * kernel[radius - k];
+    // Horizontal convolution with reversed kernel (matches CPU)
+    for (int k = -radius; k <= radius; ++k) {
+        int pixelIdx = y * ncols + (x + k);
+        int kernelIdx = kwidth - 1 - (radius + k);  // reverse kernel
+        sum += imgin[pixelIdx] * kernel[kernelIdx];
+    }
 
     imgout[y * ncols + x] = sum;
 }
+
 
 __global__ void convolveImageVertKernel(
     const float* imgin, float* imgout,
     const float* kernel, int kwidth,
     int ncols, int nrows)
 {
-    printf("GPU riunning convoloe image vert\n");
+    //printf("[GPU]convolve vert runnning      ");
     int x = blockIdx.x * blockDim.x + threadIdx.x;
     int y = blockIdx.y * blockDim.y + threadIdx.y;
     if (x >= ncols || y >= nrows) return;
@@ -75,16 +81,22 @@ __global__ void convolveImageVertKernel(
     int radius = kwidth / 2;
     float sum = 0.0f;
 
+    // Top/bottom boundaries
     if (y < radius || y >= nrows - radius) {
         imgout[y * ncols + x] = 0.0f;
         return;
     }
 
-    for (int k = -radius; k <= radius; ++k)
-        sum += imgin[(y + k) * ncols + x] * kernel[radius - k];
+    // Vertical convolution with reversed kernel (matches CPU)
+    for (int k = -radius; k <= radius; ++k) {
+        int pixelIdx = (y + k) * ncols + x;
+        int kernelIdx = kwidth - 1 - (radius + k);  // reverse kernel
+        sum += imgin[pixelIdx] * kernel[kernelIdx];
+    }
 
     imgout[y * ncols + x] = sum;
 }
+
 
 /*********************************************************************
  * Host Functions
@@ -218,26 +230,46 @@ extern "C" void _convolveImageVertGPU(_KLT_FloatImage imgin, ConvolutionKernel k
 /*********************************************************************
  * Gradient and smoothing functions
  *********************************************************************/
-extern "C" void _KLTComputeGradients(_KLT_FloatImage img, float sigma, _KLT_FloatImage gradx, _KLT_FloatImage grady)
+// Fixed GPU Compute Gradients
+extern "C" void _KLTComputeGradients(_KLT_FloatImage img, float sigma,
+                                     _KLT_FloatImage gradx, _KLT_FloatImage grady)
 {
-    assert(gradx->ncols >= img->ncols);
-    assert(grady->nrows >= img->nrows);
+    assert(gradx->ncols >= img->ncols && gradx->nrows >= img->nrows);
+    assert(grady->ncols >= img->ncols && grady->nrows >= img->nrows);
 
+    // Recompute kernels if sigma changed
     if (fabs(sigma - sigma_last) > 0.05)
         _computeKernels(sigma, &gauss_kernel, &gaussderiv_kernel);
 
-    _convolveImageHorizGPU(img, gaussderiv_kernel, gradx);
-    _convolveImageVertGPU(img, gauss_kernel, grady);
+    // Temporary buffer for horizontal pass
+    _KLT_FloatImage tmp = _KLTCreateFloatImage(img->ncols, img->nrows);
+
+    // gradx = dG/dx * img
+    _convolveImageHorizGPU(img, gaussderiv_kernel, tmp);
+    _convolveImageVertGPU(tmp, gauss_kernel, gradx);
+
+    // grady = dG/dy * img
+    _convolveImageHorizGPU(img, gauss_kernel, tmp);
+    _convolveImageVertGPU(tmp, gaussderiv_kernel, grady);
+
+    // Free temporary buffer
+    _KLTFreeFloatImage(tmp);
 }
 
-extern "C" void _KLTComputeSmoothedImage(_KLT_FloatImage img, float sigma, _KLT_FloatImage smooth)
+// Fixed GPU Compute Smoothed Image
+extern "C" void _KLTComputeSmoothedImage(_KLT_FloatImage img, float sigma,
+                                         _KLT_FloatImage smooth)
 {
-    assert(smooth->ncols >= img->ncols);
-    assert(smooth->nrows >= img->nrows);
+    assert(smooth->ncols >= img->ncols && smooth->nrows >= img->nrows);
 
     if (fabs(sigma - sigma_last) > 0.05)
         _computeKernels(sigma, &gauss_kernel, &gaussderiv_kernel);
 
-    _convolveImageHorizGPU(img, gauss_kernel, smooth);
-    _convolveImageVertGPU(smooth, gauss_kernel, smooth);
+    _KLT_FloatImage tmp = _KLTCreateFloatImage(img->ncols, img->nrows);
+
+    // smooth = G * img
+    _convolveImageHorizGPU(img, gauss_kernel, tmp);
+    _convolveImageVertGPU(tmp, gauss_kernel, smooth);
+
+    _KLTFreeFloatImage(tmp);
 }
