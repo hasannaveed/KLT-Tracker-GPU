@@ -1,5 +1,5 @@
 /*********************************************************************
- * selectGoodFeatures.c
+ * selectGoodFeatures.cu - Optimized GPU version
  *
  *********************************************************************/
 
@@ -178,43 +178,90 @@ static float _minEigenvalue(float gxx, float gxy, float gyy)
 /* GPU min eigenvalue */
 __device__ float minEigenvalueGPU(float gxx, float gxy, float gyy)
 {
-  //printf("GPU riunning eigenvlaue\n");
   return 0.5f * (gxx + gyy - sqrtf((gxx - gyy)*(gxx - gyy) + 4.0f*gxy*gxy));
 }
 
-/* GPU kernel */
+/* Optimized GPU kernel with shared memory and coalesced access */
+#define TILE_WIDTH 16
+#define SMEM_PAD 1  // Padding to avoid bank conflicts
+
 __global__ void computeTrackabilityKernel(
-    const float* gradx, const float* grady,
+    const float* __restrict__ gradx, 
+    const float* __restrict__ grady,
     int ncols, int nrows,
     int window_hw, int window_hh,
     int skipPixels,
     int borderx, int bordery,
-    float* eigvals
+    float* __restrict__ eigvals
 ) {
-    //printf("GPU running compute kernel: selectgoodfeatire\n");
+    // Shared memory with padding for bank conflict avoidance
+    __shared__ float s_gradx[(TILE_WIDTH + 2*15)][TILE_WIDTH + 2*15 + SMEM_PAD];
+    __shared__ float s_grady[(TILE_WIDTH + 2*15)][TILE_WIDTH + 2*15 + SMEM_PAD];
+    
+    // Global thread coordinates
     int x = borderx + blockIdx.x * blockDim.x + threadIdx.x;
     int y = bordery + blockIdx.y * blockDim.y + threadIdx.y;
-
-    if (x >= ncols - borderx || y >= nrows - bordery) return;
-    if ((x - borderx) % (skipPixels + 1) != 0 || (y - bordery) % (skipPixels + 1) != 0) return;
-
-    float gxx = 0.0f, gxy = 0.0f, gyy = 0.0f;
-
-    for (int yy = -window_hh; yy <= window_hh; yy++) {
-        for (int xx = -window_hw; xx <= window_hw; xx++) {
-            float gx = gradx[(y+yy)*ncols + (x+xx)];
-            float gy = grady[(y+yy)*ncols + (x+xx)];
-            gxx += gx*gx;
-            gxy += gx*gy;
-            gyy += gy*gy;
+    
+    // Local thread coordinates
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+    
+    // Calculate tile boundaries with halo region
+    int tile_start_x = blockIdx.x * blockDim.x + borderx - window_hw;
+    int tile_start_y = blockIdx.y * blockDim.y + bordery - window_hh;
+    int tile_width = TILE_WIDTH + 2 * window_hw;
+    int tile_height = TILE_WIDTH + 2 * window_hh;
+    
+    // Cooperative loading of tile data into shared memory
+    // Each thread may load multiple elements for the halo region
+    for (int dy = ty; dy < tile_height; dy += blockDim.y) {
+        for (int dx = tx; dx < tile_width; dx += blockDim.x) {
+            int gx = tile_start_x + dx;
+            int gy = tile_start_y + dy;
+            
+            // Clamp to image boundaries
+            gx = max(0, min(gx, ncols - 1));
+            gy = max(0, min(gy, nrows - 1));
+            
+            // Coalesced global memory access
+            int global_idx = gy * ncols + gx;
+            s_gradx[dy][dx] = gradx[global_idx];
+            s_grady[dy][dx] = grady[global_idx];
         }
     }
-
-    eigvals[y*ncols + x] = minEigenvalueGPU(gxx, gxy, gyy);
+    
+    __syncthreads();
+    
+    // Check bounds and skip pattern
+    if (x >= ncols - borderx || y >= nrows - bordery) return;
+    if ((x - borderx) % (skipPixels + 1) != 0 || (y - bordery) % (skipPixels + 1) != 0) return;
+    
+    // Compute structure tensor from shared memory
+    float gxx = 0.0f, gxy = 0.0f, gyy = 0.0f;
+    
+    // Local coordinates in shared memory
+    int local_x = tx + window_hw;
+    int local_y = ty + window_hh;
+    
+    // Accumulate using shared memory (no global memory access in loop)
+    #pragma unroll 4
+    for (int yy = -window_hh; yy <= window_hh; yy++) {
+        #pragma unroll 4
+        for (int xx = -window_hw; xx <= window_hw; xx++) {
+            float gx = s_gradx[local_y + yy][local_x + xx];
+            float gy = s_grady[local_y + yy][local_x + xx];
+            gxx += gx * gx;
+            gxy += gx * gy;
+            gyy += gy * gy;
+        }
+    }
+    
+    // Compute eigenvalue and write to global memory (coalesced)
+    eigvals[y * ncols + x] = minEigenvalueGPU(gxx, gxy, gyy);
 }
 
 /* ------------------------------------------------------------------- */
-/* GPU wrapper */
+/* Optimized GPU wrapper with unified memory support */
 void _KLTSelectGoodFeaturesGPU(
     KLT_TrackingContext tc,
     KLT_PixelType *img,
@@ -226,40 +273,71 @@ void _KLTSelectGoodFeaturesGPU(
     int window_hw = tc->window_width / 2;
     int window_hh = tc->window_height / 2;
 
+    // Use unified memory for gradient data
     _KLT_FloatImage floatimg = _KLTCreateFloatImage(ncols, nrows);
-    _KLT_FloatImage gradx    = _KLTCreateFloatImage(ncols, nrows);
-    _KLT_FloatImage grady    = _KLTCreateFloatImage(ncols, nrows);
+    
+    float *gradx_data, *grady_data;
+    size_t img_size = ncols * nrows * sizeof(float);
+    
+    // Allocate unified memory for gradients (accessible from both CPU and GPU)
+    cudaMallocManaged(&gradx_data, img_size);
+    cudaMallocManaged(&grady_data, img_size);
+    
+    // Create wrapper structures
+    _KLT_FloatImage gradx = (_KLT_FloatImage)malloc(sizeof(_KLT_FloatImageRec));
+    _KLT_FloatImage grady = (_KLT_FloatImage)malloc(sizeof(_KLT_FloatImageRec));
+    gradx->data = gradx_data;
+    grady->data = grady_data;
+    gradx->ncols = grady->ncols = ncols;
+    gradx->nrows = grady->nrows = nrows;
 
+    // Preprocessing
     if (tc->smoothBeforeSelecting) {
         _KLT_FloatImage tmpimg = _KLTCreateFloatImage(ncols, nrows);
         _KLTToFloatImage(img, ncols, nrows, tmpimg);
         _KLTComputeSmoothedImage(tmpimg, _KLTComputeSmoothSigma(tc), floatimg);
         _KLTFreeFloatImage(tmpimg);
-    } else _KLTToFloatImage(img, ncols, nrows, floatimg);
+    } else {
+        _KLTToFloatImage(img, ncols, nrows, floatimg);
+    }
 
     _KLTComputeGradients(floatimg, tc->grad_sigma, gradx, grady);
 
-    float *d_gradx, *d_grady, *d_eigvals;
-    cudaMalloc(&d_gradx, ncols*nrows*sizeof(float));
-    cudaMalloc(&d_grady, ncols*nrows*sizeof(float));
-    cudaMalloc(&d_eigvals, ncols*nrows*sizeof(float));
+    // Allocate unified memory for eigenvalues
+    float *eigvals;
+    cudaMallocManaged(&eigvals, img_size);
+    
+    // Prefetch data to GPU for better performance
+    int device = 0;
+    cudaMemPrefetchAsync(gradx_data, img_size, device, 0);
+    cudaMemPrefetchAsync(grady_data, img_size, device, 0);
+    cudaMemPrefetchAsync(eigvals, img_size, device, 0);
 
-    cudaMemcpy(d_gradx, gradx->data, ncols*nrows*sizeof(float), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_grady, grady->data, ncols*nrows*sizeof(float), cudaMemcpyHostToDevice);
-
-    dim3 block(16,16);
-    dim3 grid((ncols+15)/16, (nrows+15)/16);
-
-    computeTrackabilityKernel<<<grid, block>>>(
-        d_gradx, d_grady, ncols, nrows, window_hw, window_hh,
-        tc->nSkippedPixels, tc->borderx, tc->bordery, d_eigvals
+    // Launch optimized kernel with proper block/grid dimensions
+    dim3 block(TILE_WIDTH, TILE_WIDTH);
+    dim3 grid(
+        (ncols - 2*tc->borderx + TILE_WIDTH - 1) / TILE_WIDTH,
+        (nrows - 2*tc->bordery + TILE_WIDTH - 1) / TILE_WIDTH
     );
 
-    float* eigvals = (float*)malloc(ncols*nrows*sizeof(float));
-    cudaMemcpy(eigvals, d_eigvals, ncols*nrows*sizeof(float), cudaMemcpyDeviceToHost);
+    computeTrackabilityKernelOptimized<<<grid, block>>>(
+        gradx_data, grady_data, ncols, nrows, 
+        window_hw, window_hh,
+        tc->nSkippedPixels, tc->borderx, tc->bordery, 
+        eigvals
+    );
 
-    /* TODO: convert eigvals -> pointlist, sort, enforce minimum distance on CPU */
-    // Create pointlist (x, y, value) from GPU eigenvalues
+    // Wait for GPU to finish and check for errors
+    cudaError_t err = cudaDeviceSynchronize();
+    if (err != cudaSuccess) {
+        fprintf(stderr, "CUDA error: %s\n", cudaGetErrorString(err));
+    }
+
+    // Prefetch eigenvalues back to CPU
+    cudaMemPrefetchAsync(eigvals, img_size, cudaCpuDeviceId, 0);
+    cudaDeviceSynchronize();
+
+    // Create pointlist from eigenvalues
     int *pointlist = (int *) malloc(ncols * nrows * 3 * sizeof(int));
     int npoints = 0;
     unsigned int limit = 1;
@@ -272,7 +350,7 @@ void _KLTSelectGoodFeaturesGPU(
     if (bordery < tc->window_height/2) bordery = tc->window_height/2;
 
     int *ptr = pointlist;
-    for (int y = bordery; y < nrows - bordery; y += tc->nSkippedPixels+1)
+    for (int y = bordery; y < nrows - bordery; y += tc->nSkippedPixels+1) {
         for (int x = borderx; x < ncols - borderx; x += tc->nSkippedPixels+1) {
             *ptr++ = x;
             *ptr++ = y;
@@ -281,11 +359,12 @@ void _KLTSelectGoodFeaturesGPU(
             *ptr++ = (int) val;
             npoints++;
         }
+    }
 
-    // Sort the pointlist (CPU)
+    // Sort the pointlist
     _sortPointList(pointlist, npoints);
 
-    // Enforce minimum distance and fill featurelist (CPU)
+    // Enforce minimum distance and fill featurelist
     _enforceMinimumDistance(
         pointlist, npoints, featurelist,
         ncols, nrows,
@@ -294,19 +373,18 @@ void _KLTSelectGoodFeaturesGPU(
         (mode == SELECTING_ALL)
     );
 
-    // Free temporary memory
+    // Free memory
     free(pointlist);
-    free(eigvals);
-
-    cudaFree(d_gradx); cudaFree(d_grady); cudaFree(d_eigvals);
+    cudaFree(eigvals);
+    cudaFree(gradx_data);
+    cudaFree(grady_data);
+    free(gradx);
+    free(grady);
     _KLTFreeFloatImage(floatimg);
-    _KLTFreeFloatImage(gradx);
-    _KLTFreeFloatImage(grady);
 }
 
 /* ------------------------------------------------------------------- */
 
-/* ------------------------------------------------------------------- */
 void KLTSelectGoodFeatures(
   KLT_TrackingContext tc,
   KLT_PixelType *img, 
@@ -330,8 +408,8 @@ void KLTSelectGoodFeatures(
     fflush(stderr);
   }
 }
-// Rename this function
-void _KLTSelectGoodFeatures(  // <-- use the CPU function name
+
+void _KLTSelectGoodFeatures(
     KLT_TrackingContext tc,
     KLT_PixelType *img,
     int ncols,
@@ -341,7 +419,6 @@ void _KLTSelectGoodFeatures(  // <-- use the CPU function name
 ) {
     _KLTSelectGoodFeaturesGPU(tc, img, ncols, nrows, featurelist, mode);
 }
-
 
 void KLTReplaceLostFeatures(
   KLT_TrackingContext tc,
