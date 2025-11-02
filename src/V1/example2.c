@@ -7,6 +7,8 @@ locations (before and after tracking) to text files and to PPM files.
 
 #include "pnmio.h"
 #include "klt.h"
+#include <time.h>   // for timing
+#include <stdio.h>  // for printf
 
 #ifdef WIN32
 int RunExample2()
@@ -14,29 +16,42 @@ int RunExample2()
 int main()
 #endif
 {
-  unsigned char *img1, *img2;
-  KLT_TrackingContext tc;
-  KLT_FeatureList fl;
-  int nFeatures = 100;
-  int ncols, nrows;
+	clock_t start, end;
+	double cpu_time_used;
 
-  tc = KLTCreateTrackingContext();
-  fl = KLTCreateFeatureList(nFeatures);
+	// Start timing
+	start = clock();
 
-  img1 = pgmReadFile("../../data/img0.pgm", NULL, &ncols, &nrows);
-  img2 = pgmReadFile("../../data/img1.pgm", NULL, &ncols, &nrows);
+	unsigned char* img1, * img2;
+	KLT_TrackingContext tc;
+	KLT_FeatureList fl;
+	int nFeatures = 100;
+	int ncols, nrows;
 
-  KLTSelectGoodFeatures(tc, img1, ncols, nrows, fl);
+	tc = KLTCreateTrackingContext();
+	fl = KLTCreateFeatureList(nFeatures);
 
-  KLTWriteFeatureListToPPM(fl, img1, ncols, nrows, "feat1.ppm");
-  KLTWriteFeatureList(fl, "feat1.txt", "%3d");
+	img1 = pgmReadFile("../../data/img0.pgm", NULL, &ncols, &nrows);
+	img2 = pgmReadFile("../../data/img1.pgm", NULL, &ncols, &nrows);
 
-  KLTTrackFeatures(tc, img1, img2, ncols, nrows, fl);
-  KLTReplaceLostFeatures(tc, img2, ncols, nrows, fl);
+	KLTSelectGoodFeatures(tc, img1, ncols, nrows, fl);
 
-  KLTWriteFeatureListToPPM(fl, img2, ncols, nrows, "feat2.ppm");
-  KLTWriteFeatureList(fl, "feat2.txt", "%3d");
+	KLTWriteFeatureListToPPM(fl, img1, ncols, nrows, "feat1.ppm");
+	KLTWriteFeatureList(fl, "feat1.txt", "%3d");
 
-  return 0;
+	KLTTrackFeatures(tc, img1, img2, ncols, nrows, fl);
+	KLTReplaceLostFeatures(tc, img2, ncols, nrows, fl);
+
+	KLTWriteFeatureListToPPM(fl, img2, ncols, nrows, "feat2.ppm");
+	KLTWriteFeatureList(fl, "feat2.txt", "%3d");
+
+	// End timing
+	end = clock();
+	cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
+
+	printf("\n---------------------------------------------\n");
+	printf("Execution Time: %.4f seconds\n", cpu_time_used);
+	printf("---------------------------------------------\n");
+
+	return 0;
 }
-

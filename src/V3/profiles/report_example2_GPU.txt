@@ -1,0 +1,68 @@
+Generating SQLite file profiles/report_example2_GPU.sqlite from profiles/report_example2_GPU.nsys-rep
+Processing [profiles/report_example2_GPU.sqlite] with [/opt/nvidia/nsight-systems/2022.4.2/host-linux-x64/reports/nvtxsum.py]... 
+SKIPPED: profiles/report_example2_GPU.sqlite does not contain NV Tools Extension (NVTX) data.
+
+Processing [profiles/report_example2_GPU.sqlite] with [/opt/nvidia/nsight-systems/2022.4.2/host-linux-x64/reports/osrtsum.py]... 
+SKIPPED: profiles/report_example2_GPU.sqlite does not contain OS Runtime trace data.
+
+Processing [profiles/report_example2_GPU.sqlite] with [/opt/nvidia/nsight-systems/2022.4.2/host-linux-x64/reports/cudaapisum.py]... 
+
+ ** CUDA API Summary (cudaapisum):
+
+ Time (%)  Total Time (ns)  Num Calls  Avg (ns)  Med (ns)  Min (ns)  Max (ns)   StdDev (ns)           Name         
+ --------  ---------------  ---------  --------  --------  --------  ---------  -----------  ----------------------
+     54.5        325803064       3276   99451.5    1773.0       966  193621276    3383299.0  cudaMalloc            
+     25.6        152862673       3276   46661.4   45856.0      9585     881210      32020.6  cudaMemcpy            
+     14.5         86576266       3276   26427.4    1633.0       841     482766      56904.9  cudaFree              
+      3.3         19578851        563   34775.9   27334.0      1875     160744      28733.5  cudaDeviceSynchronize 
+      2.2         12966688        565   22949.9   14850.0      8021     883293      40554.2  cudaLaunchKernel      
+      0.0             1013          1    1013.0    1013.0      1013       1013          0.0  cuModuleGetLoadingMode
+
+Processing [profiles/report_example2_GPU.sqlite] with [/opt/nvidia/nsight-systems/2022.4.2/host-linux-x64/reports/gpukernsum.py]... 
+SKIPPED: profiles/report_example2_GPU.sqlite does not contain CUDA kernel data.
+
+Processing [profiles/report_example2_GPU.sqlite] with [/opt/nvidia/nsight-systems/2022.4.2/host-linux-x64/reports/gpumemtimesum.py]... 
+SKIPPED: profiles/report_example2_GPU.sqlite does not contain GPU memory data.
+
+Processing [profiles/report_example2_GPU.sqlite] with [/opt/nvidia/nsight-systems/2022.4.2/host-linux-x64/reports/gpumemsizesum.py]... 
+SKIPPED: profiles/report_example2_GPU.sqlite does not contain GPU memory data.
+
+Processing [profiles/report_example2_GPU.sqlite] with [/opt/nvidia/nsight-systems/2022.4.2/host-linux-x64/reports/openmpevtsum.py]... 
+SKIPPED: profiles/report_example2_GPU.sqlite does not contain OpenMP event data.
+
+Processing [profiles/report_example2_GPU.sqlite] with [/opt/nvidia/nsight-systems/2022.4.2/host-linux-x64/reports/khrdebugsum.py]... 
+SKIPPED: profiles/report_example2_GPU.sqlite does not contain KHR Extension (KHR_DEBUG) data.
+
+Processing [profiles/report_example2_GPU.sqlite] with [/opt/nvidia/nsight-systems/2022.4.2/host-linux-x64/reports/khrdebuggpusum.py]... 
+SKIPPED: profiles/report_example2_GPU.sqlite does not contain GPU KHR Extension (KHR_DEBUG) data.
+
+Processing [profiles/report_example2_GPU.sqlite] with [/opt/nvidia/nsight-systems/2022.4.2/host-linux-x64/reports/vulkanmarkerssum.py]... 
+SKIPPED: profiles/report_example2_GPU.sqlite does not contain Vulkan Debug Extension (Vulkan Debug Util) data.
+
+Processing [profiles/report_example2_GPU.sqlite] with [/opt/nvidia/nsight-systems/2022.4.2/host-linux-x64/reports/vulkangpumarkersum.py]... 
+SKIPPED: profiles/report_example2_GPU.sqlite does not contain GPU Vulkan Debug Extension (GPU Vulkan Debug markers) data.
+
+Processing [profiles/report_example2_GPU.sqlite] with [/opt/nvidia/nsight-systems/2022.4.2/host-linux-x64/reports/dx11pixsum.py]... 
+SKIPPED: profiles/report_example2_GPU.sqlite does not contain DX11 CPU debug markers.
+
+Processing [profiles/report_example2_GPU.sqlite] with [/opt/nvidia/nsight-systems/2022.4.2/host-linux-x64/reports/dx12gpumarkersum.py]... 
+SKIPPED: profiles/report_example2_GPU.sqlite does not contain DX12 GPU debug markers.
+
+Processing [profiles/report_example2_GPU.sqlite] with [/opt/nvidia/nsight-systems/2022.4.2/host-linux-x64/reports/dx12pixsum.py]... 
+SKIPPED: profiles/report_example2_GPU.sqlite does not contain DX12 CPU debug markers.
+
+Processing [profiles/report_example2_GPU.sqlite] with [/opt/nvidia/nsight-systems/2022.4.2/host-linux-x64/reports/wddmqueuesdetails.py]... 
+SKIPPED: profiles/report_example2_GPU.sqlite does not contain WDDM context data.
+
+Processing [profiles/report_example2_GPU.sqlite] with [/opt/nvidia/nsight-systems/2022.4.2/host-linux-x64/reports/unifiedmemory.py]... 
+SKIPPED: profiles/report_example2_GPU.sqlite does not contain CUDA memory transfers data.
+
+Processing [profiles/report_example2_GPU.sqlite] with [/opt/nvidia/nsight-systems/2022.4.2/host-linux-x64/reports/unifiedmemorytotals.py]... 
+SKIPPED: profiles/report_example2_GPU.sqlite does not contain CUDA memory transfers data.
+
+Processing [profiles/report_example2_GPU.sqlite] with [/opt/nvidia/nsight-systems/2022.4.2/host-linux-x64/reports/umcpupagefaults.py]... 
+SKIPPED: profiles/report_example2_GPU.sqlite does not contain CUDA Unified Memory CPU page faults data.
+
+Processing [profiles/report_example2_GPU.sqlite] with [/opt/nvidia/nsight-systems/2022.4.2/host-linux-x64/reports/openaccsum.py]... 
+SKIPPED: profiles/report_example2_GPU.sqlite does not contain OpenACC event data.
+

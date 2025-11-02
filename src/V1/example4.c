@@ -8,6 +8,7 @@ table is saved to "ft3.txt".
 
 #include <stdio.h>
 #include "klt.h"
+#include <time.h>    // for timing
 
 #ifdef WIN32
 int RunExample4()
@@ -15,6 +16,11 @@ int RunExample4()
 int main()
 #endif
 {
+  clock_t start, end;
+  double cpu_time_used;
+
+    // Start timing
+  start = clock();
   KLT_FeatureList fl;
   KLT_FeatureHistory fh;
   KLT_FeatureTable ft;
@@ -39,6 +45,12 @@ int main()
 
   KLTStoreFeatureHistory(fh, ft, 8);
   KLTWriteFeatureTable(ft, "ft3.txt", "%6.1f");
+  end = clock();
+  cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
+
+  printf("\n---------------------------------------------\n");
+  printf("Execution Time: %.4f seconds\n", cpu_time_used);
+  printf("---------------------------------------------\n");
 
   return 0;
 }

@@ -8,6 +8,7 @@ saved to a text file; each feature list is also written to a PPM file.
 #include <stdlib.h>
 #include <stdio.h>
 #include "pnmio.h"
+#include <time.h>      // for timing
 #include "klt.h"
 
 /* #define REPLACE */
@@ -18,6 +19,11 @@ int RunExample3()
 int main()
 #endif
 {
+  clock_t start, end;
+  double cpu_time_used;
+
+    // Start timing
+  start = clock();
   unsigned char *img1, *img2;
   char fnamein[100], fnameout[100];
   KLT_TrackingContext tc;
@@ -61,5 +67,11 @@ int main()
   free(img1);
   free(img2);
 
+  end = clock();
+  cpu_time_used = ((double)(end - start)) / CLOCKS_PER_SEC;
+
+  printf("\n---------------------------------------------\n");
+  printf("Execution Time: %.4f seconds\n", cpu_time_used);
+  printf("---------------------------------------------\n");
   return 0;
 }
