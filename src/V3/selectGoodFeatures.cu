@@ -1,5 +1,5 @@
 /*********************************************************************
- * selectGoodFeatures_optimized.cu - Further optimized GPU version of KLTSelectGoodFeatures
+ * selectGoodFeatures_optimized.cu - Final optimized GPU version of KLTSelectGoodFeatures
  
  *********************************************************************/
 
