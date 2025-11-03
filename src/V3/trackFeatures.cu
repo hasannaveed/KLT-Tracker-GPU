@@ -1,18 +1,6 @@
 /*********************************************************************
  * trackFeatures_optimized_globalcache.cu
- *
- * Optimized GPU implementation of _computeGradientSum_CUDA
- * - Persistent device-side caches for gradient images (avoid repeated allocations)
- * - Async host->device copies on a cached stream
- * - 2D kernel (16x16 blocks), coalesced global memory reads
- * - Manual bilinear interpolation on device
- *
- * Notes:
- *  - Keeps external wrapper function signature identical.
- *  - No forbidden intrinsics used.
- *  - No texture / cudaArray allocation per call.
- *
- * Compile with nvcc.
+ 
  *********************************************************************/
 
 #include <assert.h>

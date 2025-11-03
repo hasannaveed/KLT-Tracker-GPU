@@ -1,9 +1,8 @@
 /*********************************************************************
- * selectGoodFeatures.cu - Optimized GPU version
- *
+ * selectGoodFeatures_optimized.cu - Further optimized GPU version of KLTSelectGoodFeatures
+ 
  *********************************************************************/
 
-/* Standard includes */
 #include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -175,93 +174,144 @@ static float _minEigenvalue(float gxx, float gxy, float gyy)
 /* GPU includes */
 #include <cuda_runtime.h>
 
-/* GPU min eigenvalue */
+/* GPU min eigenvalue (device) */
 __device__ float minEigenvalueGPU(float gxx, float gxy, float gyy)
 {
   return 0.5f * (gxx + gyy - sqrtf((gxx - gyy)*(gxx - gyy) + 4.0f*gxy*gxy));
 }
 
-/* Optimized GPU kernel with shared memory and coalesced access */
-#define TILE_WIDTH 16
-#define SMEM_PAD 1  // Padding to avoid bank conflicts
+/* -------------------------------------------------------------------
+ * Kernel choices and occupancy tuning:
+ * We'll select a block size at runtime using occupancy API. For the
+ * tiled kernel we still require shared memory allocation passed at launch.
+ *
+ * We retain a 2D block mapping (block.x, block.y) for coalescing and
+ * warp-friendliness, but compute block.y from chosen block.x when needed.
+ */
 
-__global__ void computeTrackabilityKernel(
-    const float* __restrict__ gradx, 
-    const float* __restrict__ grady,
+/* Default block shape used as fallback */
+#define DEFAULT_BLOCK_X 32
+#define DEFAULT_BLOCK_Y 8
+
+/* Shared-memory tiled kernel (stages tile + halo into shared mem and computes using shared mem) */
+__global__ void computeTrackabilityKernel_tex_shared(
+    cudaTextureObject_t gradxTex,
+    cudaTextureObject_t gradyTex,
     int ncols, int nrows,
     int window_hw, int window_hh,
     int skipPixels,
     int borderx, int bordery,
-    float* __restrict__ eigvals
+    float* eigvals,
+    int tile_w, int tile_h
 ) {
-    // Shared memory with padding for bank conflict avoidance
-    __shared__ float s_gradx[(TILE_WIDTH + 2*15)][TILE_WIDTH + 2*15 + SMEM_PAD];
-    __shared__ float s_grady[(TILE_WIDTH + 2*15)][TILE_WIDTH + 2*15 + SMEM_PAD];
-    
-    // Global thread coordinates
-    int x = borderx + blockIdx.x * blockDim.x + threadIdx.x;
-    int y = bordery + blockIdx.y * blockDim.y + threadIdx.y;
-    
-    // Local thread coordinates
-    int tx = threadIdx.x;
-    int ty = threadIdx.y;
-    
-    // Calculate tile boundaries with halo region
-    int tile_start_x = blockIdx.x * blockDim.x + borderx - window_hw;
-    int tile_start_y = blockIdx.y * blockDim.y + bordery - window_hh;
-    int tile_width = TILE_WIDTH + 2 * window_hw;
-    int tile_height = TILE_WIDTH + 2 * window_hh;
-    
-    // Cooperative loading of tile data into shared memory
-    // Each thread may load multiple elements for the halo region
-    for (int dy = ty; dy < tile_height; dy += blockDim.y) {
-        for (int dx = tx; dx < tile_width; dx += blockDim.x) {
-            int gx = tile_start_x + dx;
-            int gy = tile_start_y + dy;
-            
-            // Clamp to image boundaries
-            gx = max(0, min(gx, ncols - 1));
-            gy = max(0, min(gy, nrows - 1));
-            
-            // Coalesced global memory access
-            int global_idx = gy * ncols + gx;
-            s_gradx[dy][dx] = gradx[global_idx];
-            s_grady[dy][dx] = grady[global_idx];
+    // Global pixel indices for this thread (pixel to compute)
+    int gx = blockIdx.x * blockDim.x + threadIdx.x + borderx;
+    int gy = blockIdx.y * blockDim.y + threadIdx.y + bordery;
+
+    // dynamic shared memory passed by caller: s_gradx (tile_w*tile_h) then s_grady (tile_w*tile_h)
+    extern __shared__ float s_mem[];
+    float* s_gradx = s_mem;
+    float* s_grady = s_mem + (size_t)tile_w * (size_t)tile_h;
+
+    // Tile origin (global coords) including halo
+    int tile_origin_x = blockIdx.x * blockDim.x + borderx - window_hw;
+    int tile_origin_y = blockIdx.y * blockDim.y + bordery - window_hh;
+
+    // cooperative load: each thread strides across tile; precompute clamps to avoid branching inside inner loops
+    for (int dy = threadIdx.y; dy < tile_h; dy += blockDim.y) {
+        int global_y = tile_origin_y + dy;
+        int gy_clamped = global_y;
+        if (gy_clamped < 0) gy_clamped = 0;
+        if (gy_clamped > nrows - 1) gy_clamped = nrows - 1;
+        int rowBase = dy * tile_w;
+        for (int dx = threadIdx.x; dx < tile_w; dx += blockDim.x) {
+            int global_x = tile_origin_x + dx;
+            int gx_clamped = global_x;
+            if (gx_clamped < 0) gx_clamped = 0;
+            if (gx_clamped > ncols - 1) gx_clamped = ncols - 1;
+            // fetch once per position
+            float gxv = tex2D<float>(gradxTex, (float)gx_clamped + 0.5f, (float)gy_clamped + 0.5f);
+            float gyv = tex2D<float>(gradyTex, (float)gx_clamped + 0.5f, (float)gy_clamped + 0.5f);
+            int idx = rowBase + dx;
+            s_gradx[idx] = gxv;
+            s_grady[idx] = gyv;
         }
     }
-    
+
     __syncthreads();
-    
-    // Check bounds and skip pattern
-    if (x >= ncols - borderx || y >= nrows - bordery) return;
-    if ((x - borderx) % (skipPixels + 1) != 0 || (y - bordery) % (skipPixels + 1) != 0) return;
-    
-    // Compute structure tensor from shared memory
+
+    // Bounds & skip (done after tile is ready, reduces redundant checks in cooperative loads)
+    if (gx >= ncols - borderx || gy >= nrows - bordery) return;
+    if ((gx - borderx) % (skipPixels + 1) != 0 || (gy - bordery) % (skipPixels + 1) != 0) return;
+
+    // local coordinates inside shared tile for the pixel
+    int local_x = threadIdx.x + window_hw;
+    int local_y = threadIdx.y + window_hh;
+
     float gxx = 0.0f, gxy = 0.0f, gyy = 0.0f;
-    
-    // Local coordinates in shared memory
-    int local_x = tx + window_hw;
-    int local_y = ty + window_hh;
-    
-    // Accumulate using shared memory (no global memory access in loop)
+
+    // Unroll small windows; window size often small so unroll gives benefit
     #pragma unroll 4
     for (int yy = -window_hh; yy <= window_hh; yy++) {
+        int row = (local_y + yy) * tile_w;
         #pragma unroll 4
         for (int xx = -window_hw; xx <= window_hw; xx++) {
-            float gx = s_gradx[local_y + yy][local_x + xx];
-            float gy = s_grady[local_y + yy][local_x + xx];
-            gxx += gx * gx;
-            gxy += gx * gy;
-            gyy += gy * gy;
+            int idx = row + (local_x + xx);
+            float gx_val = s_gradx[idx];
+            float gy_val = s_grady[idx];
+            gxx += gx_val * gx_val;
+            gxy += gx_val * gy_val;
+            gyy += gy_val * gy_val;
         }
     }
-    
-    // Compute eigenvalue and write to global memory (coalesced)
-    eigvals[y * ncols + x] = minEigenvalueGPU(gxx, gxy, gyy);
+
+    int outIdx = gy * ncols + gx;
+    eigvals[outIdx] = minEigenvalueGPU(gxx, gxy, gyy);
 }
 
 /* ------------------------------------------------------------------- */
-/* Optimized GPU wrapper with unified memory support */
+/* No-shared kernel: samples texture directly for each neighbor (uses texture cache heavily) */
+__global__ void computeTrackabilityKernel_tex_noshared(
+    cudaTextureObject_t gradxTex,
+    cudaTextureObject_t gradyTex,
+    int ncols, int nrows,
+    int window_hw, int window_hh,
+    int skipPixels,
+    int borderx, int bordery,
+    float* eigvals
+) {
+    int gx = blockIdx.x * blockDim.x + threadIdx.x + borderx;
+    int gy = blockIdx.y * blockDim.y + threadIdx.y + bordery;
+
+    if (gx >= ncols - borderx || gy >= nrows - bordery) return;
+    if ((gx - borderx) % (skipPixels + 1) != 0 || (gy - bordery) % (skipPixels + 1) != 0) return;
+
+    float gxx = 0.0f, gxy = 0.0f, gyy = 0.0f;
+    #pragma unroll 4
+    for (int yy = -window_hh; yy <= window_hh; yy++) {
+        int ry = gy + yy;
+        int ry_clamped = ry;
+        if (ry_clamped < 0) ry_clamped = 0;
+        if (ry_clamped > nrows - 1) ry_clamped = nrows - 1;
+        #pragma unroll 4
+        for (int xx = -window_hw; xx <= window_hw; xx++) {
+            int rx = gx + xx;
+            int rx_clamped = rx;
+            if (rx_clamped < 0) rx_clamped = 0;
+            if (rx_clamped > ncols - 1) rx_clamped = ncols - 1;
+            float gxv = tex2D<float>(gradxTex, (float)rx_clamped + 0.5f, (float)ry_clamped + 0.5f);
+            float gyv = tex2D<float>(gradyTex, (float)rx_clamped + 0.5f, (float)ry_clamped + 0.5f);
+            gxx += gxv * gxv;
+            gxy += gxv * gyv;
+            gyy += gyv * gyv;
+        }
+    }
+    int outIdx = gy * ncols + gx;
+    eigvals[outIdx] = minEigenvalueGPU(gxx, gxy, gyy);
+}
+
+/* ------------------------------------------------------------------- */
+/* Optimized GPU wrapper with textures, pinned mem, streams, and occupancy-aware kernel selection */
 void _KLTSelectGoodFeaturesGPU(
     KLT_TrackingContext tc,
     KLT_PixelType *img,
@@ -273,25 +323,31 @@ void _KLTSelectGoodFeaturesGPU(
     int window_hw = tc->window_width / 2;
     int window_hh = tc->window_height / 2;
 
-    // Use unified memory for gradient data
+    /* Allocate CPU pinned memory for float image & gradients so memcpy to device is fast */
     _KLT_FloatImage floatimg = _KLTCreateFloatImage(ncols, nrows);
-    
-    float *gradx_data, *grady_data;
-    size_t img_size = ncols * nrows * sizeof(float);
-    
-    // Allocate unified memory for gradients (accessible from both CPU and GPU)
-    cudaMallocManaged(&gradx_data, img_size);
-    cudaMallocManaged(&grady_data, img_size);
-    
-    // Create wrapper structures
+
+    // Allocate pinned host memory for gradients (page-locked)
+    float *gradx_host = NULL;
+    float *grady_host = NULL;
+    size_t img_size_bytes = (size_t)ncols * (size_t)nrows * sizeof(float);
+
+    if (cudaHostAlloc((void**)&gradx_host, img_size_bytes, cudaHostAllocDefault) != cudaSuccess) {
+        fprintf(stderr, "cudaHostAlloc gradx_host failed - falling back to malloc\n");
+        gradx_host = (float*) malloc(img_size_bytes);
+    }
+    if (cudaHostAlloc((void**)&grady_host, img_size_bytes, cudaHostAllocDefault) != cudaSuccess) {
+        fprintf(stderr, "cudaHostAlloc grady_host failed - falling back to malloc\n");
+        grady_host = (float*) malloc(img_size_bytes);
+    }
+
     _KLT_FloatImage gradx = (_KLT_FloatImage)malloc(sizeof(_KLT_FloatImageRec));
     _KLT_FloatImage grady = (_KLT_FloatImage)malloc(sizeof(_KLT_FloatImageRec));
-    gradx->data = gradx_data;
-    grady->data = grady_data;
+    gradx->data = gradx_host;
+    grady->data = grady_host;
     gradx->ncols = grady->ncols = ncols;
     gradx->nrows = grady->nrows = nrows;
 
-    // Preprocessing
+    // Preprocessing (unchanged)
     if (tc->smoothBeforeSelecting) {
         _KLT_FloatImage tmpimg = _KLTCreateFloatImage(ncols, nrows);
         _KLTToFloatImage(img, ncols, nrows, tmpimg);
@@ -301,61 +357,204 @@ void _KLTSelectGoodFeaturesGPU(
         _KLTToFloatImage(img, ncols, nrows, floatimg);
     }
 
+    // Compute gradients into pinned host buffers
     _KLTComputeGradients(floatimg, tc->grad_sigma, gradx, grady);
 
-    // Allocate unified memory for eigenvalues
-    float *eigvals;
-    cudaMallocManaged(&eigvals, img_size);
-    
-    // Prefetch data to GPU for better performance
-    int device = 0;
-    cudaMemPrefetchAsync(gradx_data, img_size, device, 0);
-    cudaMemPrefetchAsync(grady_data, img_size, device, 0);
-    cudaMemPrefetchAsync(eigvals, img_size, device, 0);
+    // Create a CUDA stream for async ops
+    cudaStream_t stream;
+    cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking);
 
-    // Launch optimized kernel with proper block/grid dimensions
-    dim3 block(TILE_WIDTH, TILE_WIDTH);
-    dim3 grid(
-        (ncols - 2*tc->borderx + TILE_WIDTH - 1) / TILE_WIDTH,
-        (nrows - 2*tc->bordery + TILE_WIDTH - 1) / TILE_WIDTH
-    );
-
-    computeTrackabilityKernelOptimized<<<grid, block>>>(
-        gradx_data, grady_data, ncols, nrows, 
-        window_hw, window_hh,
-        tc->nSkippedPixels, tc->borderx, tc->bordery, 
-        eigvals
-    );
-
-    // Wait for GPU to finish and check for errors
-    cudaError_t err = cudaDeviceSynchronize();
-    if (err != cudaSuccess) {
-        fprintf(stderr, "CUDA error: %s\n", cudaGetErrorString(err));
+    // Create cudaArrays for texture objects
+    cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<float>();
+    cudaArray_t gradxArray = NULL;
+    cudaArray_t gradyArray = NULL;
+    if (cudaMallocArray(&gradxArray, &channelDesc, ncols, nrows, cudaArrayDefault) != cudaSuccess) {
+        fprintf(stderr, "cudaMallocArray gradxArray failed\n");
+    }
+    if (cudaMallocArray(&gradyArray, &channelDesc, ncols, nrows, cudaArrayDefault) != cudaSuccess) {
+        fprintf(stderr, "cudaMallocArray gradyArray failed\n");
     }
 
-    // Prefetch eigenvalues back to CPU
-    cudaMemPrefetchAsync(eigvals, img_size, cudaCpuDeviceId, 0);
-    cudaDeviceSynchronize();
+    // Copy pinned host gradients -> cudaArray asynchronously (2D copy)
+    size_t srcPitch = (size_t)ncols * sizeof(float);
+    cudaMemcpy2DToArrayAsync(gradxArray, 0, 0, gradx_host, srcPitch, srcPitch, nrows, cudaMemcpyHostToDevice, stream);
+    cudaMemcpy2DToArrayAsync(gradyArray, 0, 0, grady_host, srcPitch, srcPitch, nrows, cudaMemcpyHostToDevice, stream);
 
-    // Create pointlist from eigenvalues
+    // Create resource descriptors for texture objects
+    struct cudaResourceDesc resDescX, resDescY;
+    memset(&resDescX, 0, sizeof(resDescX));
+    memset(&resDescY, 0, sizeof(resDescY));
+    resDescX.resType = cudaResourceTypeArray;
+    resDescX.res.array.array = gradxArray;
+    resDescY.resType = cudaResourceTypeArray;
+    resDescY.res.array.array = gradyArray;
+
+    // Texture descriptors
+    struct cudaTextureDesc texDesc;
+    memset(&texDesc, 0, sizeof(texDesc));
+    texDesc.addressMode[0] = cudaAddressModeClamp;
+    texDesc.addressMode[1] = cudaAddressModeClamp;
+    texDesc.filterMode = cudaFilterModePoint; // exact texel fetch
+    texDesc.readMode = cudaReadModeElementType;
+    texDesc.normalizedCoords = 0; // use unnormalized coordinates
+
+    cudaTextureObject_t gradxTex = 0;
+    cudaTextureObject_t gradyTex = 0;
+    cudaCreateTextureObject(&gradxTex, &resDescX, &texDesc, NULL);
+    cudaCreateTextureObject(&gradyTex, &resDescY, &texDesc, NULL);
+
+    // Allocate device memory for eigenvalues
+    float *eigvals_dev = NULL;
+    if (cudaMalloc((void**)&eigvals_dev, img_size_bytes) != cudaSuccess) {
+        fprintf(stderr, "cudaMalloc eigvals_dev failed\n");
+        eigvals_dev = NULL;
+    }
+
+    // Determine grid and block configuration using occupancy helper
+    int dev = 0;
+    cudaGetDevice(&dev);
+    struct cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop, dev);
+
+    // target active blocks per SM: use occupancy calculator for no-shared kernel (lower shared mem)
+    int minGridSize = 0;
+    int blockSizeFromOccupancy = 0;
+    size_t dynamicSMemSize = 0;
+    // Query a good block size for the no-shared kernel (1D)
+    cudaError_t occErr = cudaOccupancyMaxPotentialBlockSize(
+        &minGridSize, &blockSizeFromOccupancy,
+        (void*)computeTrackabilityKernel_tex_noshared,  // function pointer
+        0, // dynamicSMemSize
+        prop.maxThreadsPerBlock
+    );
+    if (occErr != cudaSuccess) {
+        // fallback
+        blockSizeFromOccupancy = DEFAULT_BLOCK_X * DEFAULT_BLOCK_Y;
+    }
+
+    // Map the 1D occupancy block size to a 2D block shape (choose a warp-aligned X)
+    int blkThreads = blockSizeFromOccupancy;
+    if (blkThreads <= 0) blkThreads = DEFAULT_BLOCK_X * DEFAULT_BLOCK_Y;
+    // choose block.x to be a multiple of 32 (warp) and <= 64 or 128, and block.y accordingly
+    int block_x = DEFAULT_BLOCK_X;
+    int block_y = DEFAULT_BLOCK_Y;
+    // try to pick block_x as 32 and block_y = blkThreads / 32 if feasible
+    if (blkThreads >= 32) {
+        int candidate_y = blkThreads / 32;
+        if (candidate_y < 1) candidate_y = 1;
+        if (candidate_y > prop.maxThreadsPerBlock / 32) candidate_y = prop.maxThreadsPerBlock / 32;
+        // clamp candidate_y to a sensible range (2..16)
+        if (candidate_y > 16) candidate_y = 16;
+        if (candidate_y < 1) candidate_y = 1;
+        block_x = 32;
+        block_y = candidate_y;
+    } else {
+        // small occupancy result - fallback to DEFAULT
+        block_x = DEFAULT_BLOCK_X;
+        block_y = DEFAULT_BLOCK_Y;
+    }
+    if (block_x * block_y > prop.maxThreadsPerBlock) {
+        block_y = prop.maxThreadsPerBlock / block_x;
+        if (block_y < 1) block_y = 1;
+    }
+
+    dim3 block(block_x, block_y);
+
+    // compute grid dims covering valid inner region (consider border)
+    int borderx = tc->borderx;
+    int bordery = tc->bordery;
+    if (borderx < tc->window_width/2) borderx = tc->window_width/2;
+    if (bordery < tc->window_height/2) bordery = tc->window_height/2;
+
+    int inner_cols = ncols - 2*borderx;
+    int inner_rows = nrows - 2*bordery;
+    if (inner_cols < 1) inner_cols = 1;
+    if (inner_rows < 1) inner_rows = 1;
+
+    dim3 grid(
+        (inner_cols + block.x - 1) / block.x,
+        (inner_rows + block.y - 1) / block.y
+    );
+
+    // Compute required shared memory for the tiled kernel
+    int tile_w = block.x + 2 * window_hw;
+    int tile_h = block.y + 2 * window_hh;
+    // safety: avoid integer overflow
+    size_t shared_bytes_required = 0;
+    if ((size_t)tile_w * (size_t)tile_h <= ((size_t)1<<31)) {
+        shared_bytes_required = (size_t)tile_w * (size_t)tile_h * sizeof(float) * 2; // gradx + grady
+    } else {
+        shared_bytes_required = prop.sharedMemPerBlock + 1; // force no-shared
+    }
+
+    // Keep a conservative margin: require shared_bytes_required to be <= 75% of sharedMemPerBlock
+    size_t max_shared_allowed = (size_t)(prop.sharedMemPerBlock * 3 / 4);
+
+    bool use_shared_kernel = true;
+    if (shared_bytes_required == 0 || shared_bytes_required > max_shared_allowed) {
+        use_shared_kernel = false;
+    }
+    if ((int)(block.x * block.y) > prop.maxThreadsPerBlock) use_shared_kernel = false;
+
+    // Launch appropriate kernel in the stream (after async copies are queued)
+    if (use_shared_kernel) {
+        // Launch tiled kernel with dynamic shared mem and occupancy-chosen block shape
+        computeTrackabilityKernel_tex_shared<<<grid, block, shared_bytes_required, stream>>>(
+            gradxTex, gradyTex,
+            ncols, nrows,
+            window_hw, window_hh,
+            tc->nSkippedPixels, tc->borderx, tc->bordery,
+            eigvals_dev,
+            tile_w, tile_h
+        );
+    } else {
+        // Launch the no-shared kernel to maximize occupancy
+        computeTrackabilityKernel_tex_noshared<<<grid, block, 0, stream>>>(
+            gradxTex, gradyTex,
+            ncols, nrows,
+            window_hw, window_hh,
+            tc->nSkippedPixels, tc->borderx, tc->bordery,
+            eigvals_dev
+        );
+    }
+
+    // Check kernel launch errors
+    cudaError_t kerr = cudaGetLastError();
+    if (kerr != cudaSuccess) {
+        fprintf(stderr, "Kernel launch failed: %s\n", cudaGetErrorString(kerr));
+    }
+
+    // Allocate pinned host memory for eigenvalues copy-back
+    float *eigvals_host = NULL;
+    if (cudaHostAlloc((void**)&eigvals_host, img_size_bytes, cudaHostAllocDefault) != cudaSuccess) {
+        eigvals_host = (float*) malloc(img_size_bytes);
+    }
+
+    // Async copy eigenvalues back to host
+    if (eigvals_dev != NULL) {
+        cudaMemcpyAsync(eigvals_host, eigvals_dev, img_size_bytes, cudaMemcpyDeviceToHost, stream);
+    } else {
+        // If allocation failed, zero host buffer and skip kernel results (safe fallback)
+        memset(eigvals_host, 0, img_size_bytes);
+    }
+
+    // Wait for stream to finish all operations
+    cudaStreamSynchronize(stream);
+
+    // Now create pointlist from eigenvalues (same logic as before)
     int *pointlist = (int *) malloc(ncols * nrows * 3 * sizeof(int));
     int npoints = 0;
     unsigned int limit = 1;
     for (int i = 0; i < sizeof(int); i++) limit *= 256;
     limit = limit/2 - 1;
 
-    int borderx = tc->borderx;
-    int bordery = tc->bordery;
-    if (borderx < tc->window_width/2) borderx = tc->window_width/2;
-    if (bordery < tc->window_height/2) bordery = tc->window_height/2;
-
     int *ptr = pointlist;
     for (int y = bordery; y < nrows - bordery; y += tc->nSkippedPixels+1) {
         for (int x = borderx; x < ncols - borderx; x += tc->nSkippedPixels+1) {
             *ptr++ = x;
             *ptr++ = y;
-            float val = eigvals[y*ncols + x];
-            if (val > limit) val = (float) limit;
+            float val = eigvals_host[y*ncols + x];
+            if (val > (float)limit) val = (float) limit;
             *ptr++ = (int) val;
             npoints++;
         }
@@ -373,11 +572,27 @@ void _KLTSelectGoodFeaturesGPU(
         (mode == SELECTING_ALL)
     );
 
-    // Free memory
+    // Free memory and destroy texture objects, stream
     free(pointlist);
-    cudaFree(eigvals);
-    cudaFree(gradx_data);
-    cudaFree(grady_data);
+    if (eigvals_host) {
+        cudaFreeHost(eigvals_host);
+    }
+    if (eigvals_dev) {
+        cudaFree(eigvals_dev);
+    }
+    cudaDestroyTextureObject(gradxTex);
+    cudaDestroyTextureObject(gradyTex);
+    if (gradxArray) cudaFreeArray(gradxArray);
+    if (gradyArray) cudaFreeArray(gradyArray);
+    cudaStreamDestroy(stream);
+
+    // Free pinned gradient host memory (cudaFreeHost if pinned, else free)
+    if (gradx_host) {
+        cudaFreeHost(gradx_host);
+    }
+    if (grady_host) {
+        cudaFreeHost(grady_host);
+    }
     free(gradx);
     free(grady);
     _KLTFreeFloatImage(floatimg);
