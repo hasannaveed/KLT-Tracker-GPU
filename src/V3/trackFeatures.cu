@@ -86,6 +86,83 @@ static void ensure_device_image(ImgCache *c, int width, int height) {
     c->valid = true;
 }
 
+// Put these near the other kernels / device helpers in trackFeatures.cu
+
+// simple bilinear sampler for float images (width = img_w, height = img_h)
+// returns 0 for out-of-bounds coordinates
+static __device__ inline float sampleBilinear(const float *img, int img_w, int img_h, float fx, float fy) {
+    if (fx < 0.f || fy < 0.f || fx > (float)(img_w-1) || fy > (float)(img_h-1)) return 0.0f;
+    int x0 = (int)floorf(fx);
+    int y0 = (int)floorf(fy);
+    int x1 = min(x0 + 1, img_w - 1);
+    int y1 = min(y0 + 1, img_h - 1);
+    float dx = fx - (float)x0;
+    float dy = fy - (float)y0;
+    float v00 = img[y0 * img_w + x0];
+    float v10 = img[y0 * img_w + x1];
+    float v01 = img[y1 * img_w + x0];
+    float v11 = img[y1 * img_w + x1];
+    float v0 = v00 * (1.0f - dx) + v10 * dx;
+    float v1 = v01 * (1.0f - dx) + v11 * dx;
+    return v0 * (1.0f - dy) + v1 * dy;
+}
+
+// Kernel: one block per window in batch; threads in block sample pixels in window
+// blockDim.x * blockDim.y must be >= win_w * win_h (we guard with bounds)
+extern "C" __global__
+void _computeGradientSumKernelBatched(
+    const float *d_gx1, const float *d_gy1,
+    const float *d_gx2, const float *d_gy2,
+    const float *d_x1, const float *d_y1,
+    const float *d_x2, const float *d_y2,
+    int img_w, int img_h,
+    int win_w, int win_h,
+    float *d_out_gx_all, float *d_out_gy_all,
+    int batchN)
+{
+    int fid = blockIdx.x;                // feature/window index
+    if (fid >= batchN) return;
+
+    // per-window offsets in output arrays
+    int win_elems = win_w * win_h;
+    float *out_gx = d_out_gx_all + (size_t)fid * win_elems;
+    float *out_gy = d_out_gy_all + (size_t)fid * win_elems;
+
+    // get centers
+    float cx1 = d_x1[fid];
+    float cy1 = d_y1[fid];
+    float cx2 = d_x2[fid];
+    float cy2 = d_y2[fid];
+
+    // thread coordinates inside block
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+    int bx = blockDim.x; int by = blockDim.y;
+
+    // iterate over window pixels by mapping (u,v) = tx + i*bx, ty + j*by
+    for (int v = ty; v < win_h; v += by) {
+        for (int u = tx; u < win_w; u += bx) {
+            // compute sample positions relative to window center
+            // original code uses integer offsets i,j from -hw..hw; match that:
+            int hw = win_w / 2;
+            int hh = win_h / 2;
+            float sample_x1 = cx1 + (float)(u - hw);
+            float sample_y1 = cy1 + (float)(v - hh);
+            float sample_x2 = cx2 + (float)(u - hw);
+            float sample_y2 = cy2 + (float)(v - hh);
+
+            float gx1 = sampleBilinear(d_gx1, img_w, img_h, sample_x1, sample_y1);
+            float gy1 = sampleBilinear(d_gy1, img_w, img_h, sample_x1, sample_y1);
+            float gx2 = sampleBilinear(d_gx2, img_w, img_h, sample_x2, sample_y2);
+            float gy2 = sampleBilinear(d_gy2, img_w, img_h, sample_x2, sample_y2);
+
+            int idx = v * win_w + u;
+            out_gx[idx] = gx1 + gx2; // original "gradient sum" semantics: sum across images
+            out_gy[idx] = gy1 + gy2;
+        }
+    }
+}
+
 /* Kernel: 2D launch (blockDim.x * blockDim.y) - each thread computes one output sample */
 __global__ void _computeGradientSumKernelGlobal(
     const float* __restrict__ gradx1,
@@ -230,146 +307,136 @@ static inline void _freeFloatWindow(_FloatWindow fw)
 
 
 void _computeGradientSum_CUDA_batched(
-    _KLT_FloatImage gradx1,
-    _KLT_FloatImage grady1,
-    _KLT_FloatImage gradx2,
-    _KLT_FloatImage grady2,
+    _KLT_FloatImage gradx1, _KLT_FloatImage grady1,
+    _KLT_FloatImage gradx2, _KLT_FloatImage grady2,
     const float *features_x1, const float *features_y1,
     const float *features_x2, const float *features_y2,
-    int count,                 // number of features in this batch
-    int win_w, int win_h,      // size of window
-    _FloatWindow out_gradx_all, // host pointer, must have space count * win_w * win_h
-    _FloatWindow out_grady_all) // host pointer, must have space count * win_w * win_h
+    int count, int win_w, int win_h,
+    _FloatWindow out_gradx_all, _FloatWindow out_grady_all)
 {
     if (count <= 0) return;
-    if (!gradx1 || !grady1 || !gradx2 || !grady2) return;
-    if (!features_x1 || !features_y1 || !features_x2 || !features_y2) return;
-    if (!out_gradx_all || !out_grady_all) return;
-    if (win_w <= 0 || win_h <= 0) return;
 
     const int img_w = gradx1->ncols;
     const int img_h = gradx1->nrows;
-    const size_t img_elems = (size_t)img_w * (size_t)img_h;
+    const size_t img_elems = (size_t)img_w * img_h;
     const size_t img_bytes = img_elems * sizeof(float);
-    const size_t win_elems = (size_t)win_w * (size_t)win_h;
-    const size_t win_bytes = win_elems * sizeof(float);
-    const size_t batch_out_elems = win_elems * (size_t)count;
-    const size_t batch_out_bytes = batch_out_elems * sizeof(float);
+    const int win_elems = win_w * win_h;
+    const size_t batch_out_bytes = (size_t)win_elems * count * sizeof(float);
 
-    // Persistent/static cached buffers (one-time allocated and re-used)
-    static float *d_grad_pack = NULL;           // device packed grads (4 images)
-    static size_t d_grad_pack_capacity = 0;
-    static float *h_grad_pack_pinned = NULL;    // host pinned staging buffer for packed grads
-    static size_t h_grad_pack_capacity = 0;
-
-    static float *d_out_all_gx = NULL;          // device contiguous outputs for all features
-    static float *d_out_all_gy = NULL;
+    // static cached allocations to avoid repeated cudaMalloc/free
+    static float *d_gx1 = NULL, *d_gy1 = NULL, *d_gx2 = NULL, *d_gy2 = NULL;
+    static size_t d_img_capacity = 0;
+    static float *d_x1 = NULL, *d_y1 = NULL, *d_x2 = NULL, *d_y2 = NULL;
+    static float *d_out_gx_all = NULL, *d_out_gy_all = NULL;
     static size_t d_out_capacity = 0;
 
-    static float *h_out_all_gx_pinned = NULL;   // host pinned output staging buffer
-    static float *h_out_all_gy_pinned = NULL;
-    static size_t h_out_capacity = 0;
+    static float *h_x1_pinned = NULL, *h_y1_pinned = NULL, *h_x2_pinned = NULL, *h_y2_pinned = NULL;
+    static float *h_out_gx_pinned = NULL, *h_out_gy_pinned = NULL;
+    static size_t h_coords_capacity = 0, h_out_capacity = 0;
 
     static cudaStream_t stream = 0;
     static bool stream_inited = false;
-    if (!stream_inited) {
-        CUDA_CHECK(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
-        stream_inited = true;
+    if (!stream_inited) { cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking); stream_inited = true; }
+
+    // allocate device image buffers once (each holds one image)
+    size_t required_img_bytes = img_bytes; // single image
+    if (d_img_capacity < required_img_bytes) {
+        // free previous
+        if (d_gx1) { cudaFree(d_gx1); cudaFree(d_gy1); cudaFree(d_gx2); cudaFree(d_gy2); }
+        cudaMalloc((void**)&d_gx1, required_img_bytes);
+        cudaMalloc((void**)&d_gy1, required_img_bytes);
+        cudaMalloc((void**)&d_gx2, required_img_bytes);
+        cudaMalloc((void**)&d_gy2, required_img_bytes);
+        d_img_capacity = required_img_bytes;
     }
 
-    // Ensure device packed gradient buffer of size 4 * img_bytes
-    const size_t required_d_grad_bytes = img_bytes * 4;
-    if (d_grad_pack_capacity < required_d_grad_bytes) {
-        if (d_grad_pack) { CUDA_CHECK(cudaFree(d_grad_pack)); d_grad_pack = NULL; }
-        CUDA_CHECK(cudaMalloc((void**)&d_grad_pack, required_d_grad_bytes));
-        d_grad_pack_capacity = required_d_grad_bytes;
+    // copy full images to device once (synchronous with stream ordering)
+    // Use pinned host staging if grad images are not pinned already
+    // If gradx1->data is not pinned, copying from it is fine but async benefits pinned buffers
+    // We'll do synchronous cudaMemcpy (or async from pinned if available). Simpler: use cudaMemcpyAsync from host pointer
+    cudaMemcpyAsync(d_gx1, gradx1->data, img_bytes, cudaMemcpyHostToDevice, stream);
+    cudaMemcpyAsync(d_gy1, grady1->data, img_bytes, cudaMemcpyHostToDevice, stream);
+    cudaMemcpyAsync(d_gx2, gradx2->data, img_bytes, cudaMemcpyHostToDevice, stream);
+    cudaMemcpyAsync(d_gy2, grady2->data, img_bytes, cudaMemcpyHostToDevice, stream);
+
+    // allocate/pin host coordinate arrays (cached)
+    size_t coords_bytes = (size_t)count * sizeof(float);
+    if (h_coords_capacity < coords_bytes) {
+        if (h_x1_pinned) { cudaFreeHost(h_x1_pinned); cudaFreeHost(h_y1_pinned); cudaFreeHost(h_x2_pinned); cudaFreeHost(h_y2_pinned); }
+        cudaMallocHost((void**)&h_x1_pinned, coords_bytes);
+        cudaMallocHost((void**)&h_y1_pinned, coords_bytes);
+        cudaMallocHost((void**)&h_x2_pinned, coords_bytes);
+        cudaMallocHost((void**)&h_y2_pinned, coords_bytes);
+        h_coords_capacity = coords_bytes;
     }
 
-    // Ensure pinned host staging buffer for gradients
-    const size_t required_h_grad_bytes = required_d_grad_bytes;
-    if (h_grad_pack_capacity < required_h_grad_bytes) {
-        if (h_grad_pack_pinned) { CUDA_CHECK(cudaFreeHost(h_grad_pack_pinned)); h_grad_pack_pinned = NULL; }
-        CUDA_CHECK(cudaMallocHost((void**)&h_grad_pack_pinned, required_h_grad_bytes));
-        h_grad_pack_capacity = required_h_grad_bytes;
+    // copy coordinates into pinned host buffers (they're host pointers already, but pinning helps if large batches)
+    memcpy(h_x1_pinned, features_x1, coords_bytes);
+    memcpy(h_y1_pinned, features_y1, coords_bytes);
+    memcpy(h_x2_pinned, features_x2, coords_bytes);
+    memcpy(h_y2_pinned, features_y2, coords_bytes);
+
+    // allocate device coordinate arrays sized for count
+    size_t coord_dev_bytes = coords_bytes;
+    if (!d_x1 || d_out_capacity < (size_t)count) { // lazy allocate or reallocate
+        if (d_x1) { cudaFree(d_x1); cudaFree(d_y1); cudaFree(d_x2); cudaFree(d_y2); }
+        cudaMalloc((void**)&d_x1, coord_dev_bytes);
+        cudaMalloc((void**)&d_y1, coord_dev_bytes);
+        cudaMalloc((void**)&d_x2, coord_dev_bytes);
+        cudaMalloc((void**)&d_y2, coord_dev_bytes);
     }
 
-    // Pack gradients into pinned host buffer (contiguous order: gx1, gy1, gx2, gy2)
-    float *hp = h_grad_pack_pinned;
-    // Note: gradx1->data assumed to be float*
-    memcpy(hp + 0*img_elems, gradx1->data, img_bytes);
-    memcpy(hp + 1*img_elems, grady1->data, img_bytes);
-    memcpy(hp + 2*img_elems, gradx2->data, img_bytes);
-    memcpy(hp + 3*img_elems, grady2->data, img_bytes);
+    // async H->D coords
+    cudaMemcpyAsync(d_x1, h_x1_pinned, coord_dev_bytes, cudaMemcpyHostToDevice, stream);
+    cudaMemcpyAsync(d_y1, h_y1_pinned, coord_dev_bytes, cudaMemcpyHostToDevice, stream);
+    cudaMemcpyAsync(d_x2, h_x2_pinned, coord_dev_bytes, cudaMemcpyHostToDevice, stream);
+    cudaMemcpyAsync(d_y2, h_y2_pinned, coord_dev_bytes, cudaMemcpyHostToDevice, stream);
 
-    // Single H->D DMA for all gradients
-    CUDA_CHECK(cudaMemcpyAsync(d_grad_pack, h_grad_pack_pinned, required_h_grad_bytes, cudaMemcpyHostToDevice, stream));
-
-    // Device pointers for each gradient slice
-    float *d_gx1 = d_grad_pack + 0 * img_elems;
-    float *d_gy1 = d_grad_pack + 1 * img_elems;
-    float *d_gx2 = d_grad_pack + 2 * img_elems;
-    float *d_gy2 = d_grad_pack + 3 * img_elems;
-
-    // Ensure device output buffer for all features
-    if (d_out_capacity < batch_out_bytes) {
-        if (d_out_all_gx) { CUDA_CHECK(cudaFree(d_out_all_gx)); d_out_all_gx = NULL; }
-        if (d_out_all_gy) { CUDA_CHECK(cudaFree(d_out_all_gy)); d_out_all_gy = NULL; }
-        CUDA_CHECK(cudaMalloc((void**)&d_out_all_gx, batch_out_bytes));
-        CUDA_CHECK(cudaMalloc((void**)&d_out_all_gy, batch_out_bytes));
-        d_out_capacity = batch_out_bytes;
+    // allocate device outputs for all windows if needed
+    size_t required_out_bytes = batch_out_bytes;
+    if (d_out_capacity < required_out_bytes) {
+        if (d_out_gx_all) { cudaFree(d_out_gx_all); cudaFree(d_out_gy_all); }
+        cudaMalloc((void**)&d_out_gx_all, required_out_bytes);
+        cudaMalloc((void**)&d_out_gy_all, required_out_bytes);
+        d_out_capacity = required_out_bytes;
     }
 
-    // Ensure pinned host staging output buffers
-    if (h_out_capacity < batch_out_bytes) {
-        if (h_out_all_gx_pinned) { CUDA_CHECK(cudaFreeHost(h_out_all_gx_pinned)); h_out_all_gx_pinned = NULL; }
-        if (h_out_all_gy_pinned) { CUDA_CHECK(cudaFreeHost(h_out_all_gy_pinned)); h_out_all_gy_pinned = NULL; }
-        CUDA_CHECK(cudaMallocHost((void**)&h_out_all_gx_pinned, batch_out_bytes));
-        CUDA_CHECK(cudaMallocHost((void**)&h_out_all_gy_pinned, batch_out_bytes));
-        h_out_capacity = batch_out_bytes;
+    // allocate pinned host output buffers if needed
+    if (h_out_capacity < required_out_bytes) {
+        if (h_out_gx_pinned) { cudaFreeHost(h_out_gx_pinned); cudaFreeHost(h_out_gy_pinned); }
+        cudaMallocHost((void**)&h_out_gx_pinned, required_out_bytes);
+        cudaMallocHost((void**)&h_out_gy_pinned, required_out_bytes);
+        h_out_capacity = required_out_bytes;
     }
 
-    // Wait for gradients copy to be visible to kernels before launching kernels that read them
-    // (Kernels are launched to the same stream, so ordering is preserved; no extra sync needed)
+    // Ensure device copies of images + coords are visible before kernel (they are on same stream)
+    // Launch a single kernel with one block per window
+    // Choose blockDim to cover typical window sizes; use 16x16 (works up to 16x16 windows without wasted loops)
+    const int BLK_X = min(32, max(8, win_w)); // choose block dims safely (<= 32)
+    const int BLK_Y = min(32, max(8, win_h));
+    dim3 block(BLK_X, BLK_Y);
+    dim3 grid(count, 1, 1);
 
-    // Launch the existing kernel once PER FEATURE but target different output offsets.
-    // This avoids per-feature host<->device copies; we will copy all outputs back in one transfer.
-    dim3 block(16, 16);
-    dim3 grid( (win_w + block.x - 1) / block.x,
-               (win_h + block.y - 1) / block.y );
+    // single launch processes all windows in parallel
+    _computeGradientSumKernelBatched<<<grid, block, 0, stream>>>(
+        d_gx1, d_gy1, d_gx2, d_gy2,
+        d_x1, d_y1, d_x2, d_y2,
+        img_w, img_h, win_w, win_h,
+        d_out_gx_all, d_out_gy_all,
+        count);
 
-    // For each feature: launch kernel writing to d_out_all_gx + feature_offset
-    for (int f = 0; f < count; ++f) {
-        float fx1 = features_x1[f];
-        float fy1 = features_y1[f];
-        float fx2 = features_x2[f];
-        float fy2 = features_y2[f];
+    // Copy device outputs back to pinned host in one D->H
+    cudaMemcpyAsync(h_out_gx_pinned, d_out_gx_all, required_out_bytes, cudaMemcpyDeviceToHost, stream);
+    cudaMemcpyAsync(h_out_gy_pinned, d_out_gy_all, required_out_bytes, cudaMemcpyDeviceToHost, stream);
 
-        // compute pointer offsets into device output arrays for this feature
-        float *d_out_gx_ptr = d_out_all_gx + (size_t)f * win_elems;
-        float *d_out_gy_ptr = d_out_all_gy + (size_t)f * win_elems;
+    // Wait for the stream to complete the work
+    cudaStreamSynchronize(stream);
 
-        // launch kernel on same stream; kernels will execute in order on that stream
-        _computeGradientSumKernelGlobal<<<grid, block, 0, stream>>>(
-            d_gx1, d_gy1, d_gx2, d_gy2,
-            fx1, fy1, fx2, fy2,
-            img_w, img_h,
-            win_w, win_h,
-            d_out_gx_ptr, d_out_gy_ptr);
-    }
+    // Copy pinned host outputs into caller's output arrays (these are plain host buffers)
+    memcpy(out_gradx_all, h_out_gx_pinned, required_out_bytes);
+    memcpy(out_grady_all, h_out_gy_pinned, required_out_bytes);
 
-    // After all kernels are issued, copy entire device output back to pinned host in one D->H transfer
-    CUDA_CHECK(cudaMemcpyAsync(h_out_all_gx_pinned, d_out_all_gx, batch_out_bytes, cudaMemcpyDeviceToHost, stream));
-    CUDA_CHECK(cudaMemcpyAsync(h_out_all_gy_pinned, d_out_all_gy, batch_out_bytes, cudaMemcpyDeviceToHost, stream));
-
-    // Synchronize only the stream (not the whole device)
-    CUDA_CHECK(cudaStreamSynchronize(stream));
-
-    // Copy from pinned host staging to user-supplied host buffers (out_gradx_all/out_grady_all)
-    // We assume out_gradx_all/out_grady_all are contiguous and have space count*win_elems
-    memcpy(out_gradx_all, h_out_all_gx_pinned, batch_out_bytes);
-    memcpy(out_grady_all, h_out_all_gy_pinned, batch_out_bytes);
-
-    // Do not free cached buffers; reused across calls for speed.
+    // done (keep device/pinned buffers cached for reuse)
     return;
 }
 
@@ -1929,5 +1996,3 @@ nvtxRangePop();
 #ifdef __cplusplus
 }
 #endif
-
-
