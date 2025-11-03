@@ -37,7 +37,7 @@ int main()
   KLT_FeatureList fl;
   KLT_FeatureTable ft;
   int nFeatures = 150;
-  //int nFrames = 10;
+  //int nFrames = 10; // for old dataset
   int nFrames = 200;
   int ncols, nrows;
   int i;
@@ -50,7 +50,7 @@ int main()
   tc->affineConsistencyCheck = -1;  /* set this to 2 to turn on affine consistency check */
  
   img1 = pgmReadFile("../../data/750/frame_099.pgm", NULL, &ncols, &nrows);
-  //img1 = pgmReadFile("../../data/img0.pgm", NULL, &ncols, &nrows);
+  //img1 = pgmReadFile("../../data/img0.pgm", NULL, &ncols, &nrows); // for old dataset
   img2 = (unsigned char *) malloc(ncols*nrows*sizeof(unsigned char));
 
   // Create CUDA events
@@ -67,10 +67,10 @@ int main()
   //KLTWriteFeatureListToPPM(fl, img1, ncols, nrows, "output/feat99.ppm");
   KLTWriteFeatureListToPPM(fl, img1, ncols, nrows, "feat0.ppm");
 
-  for (i = 100 ; i < nFrames ; i++)  {
+  for (i = 100 ; i < nFrames ; i++)  { // set the loop to start from 1 if want to run old dataset
     //printf("Processing frame %d\n", i);
     sprintf(fnamein, "../../data/750/frame_%d.pgm", i);
-    //sprintf(fnamein, "../../data/img%d.pgm", i);
+	//sprintf(fnamein, "../../data/img%d.pgm", i); // for old dataset
 
     // Record copy time (I/O)
     cudaEventRecord(copy_start, 0);
