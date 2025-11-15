@@ -29,7 +29,9 @@ int main()
   KLT_TrackingContext tc;
   KLT_FeatureList fl;
   KLT_FeatureTable ft;
-  int nFeatures = 150, nFrames = 10;
+  int nFeatures = 150; 
+  //int nFrames = 10;
+  int nFrames = 200;
   int ncols, nrows;
   int i;
 
@@ -40,15 +42,18 @@ int main()
   tc->writeInternalImages = FALSE;
   tc->affineConsistencyCheck = -1;  /* set this to 2 to turn on affine consistency check */
  
-  img1 = pgmReadFile("../../data/img0.pgm", NULL, &ncols, &nrows);
+  img1 = pgmReadFile("../../data/750/frame_099.pgm", NULL, &ncols, &nrows);
+  //img1 = pgmReadFile("../../data/img0.pgm", NULL, &ncols, &nrows); // for old dataset
   img2 = (unsigned char *) malloc(ncols*nrows*sizeof(unsigned char));
 
   KLTSelectGoodFeatures(tc, img1, ncols, nrows, fl);
   KLTStoreFeatureList(fl, ft, 0);
+//KLTWriteFeatureListToPPM(fl, img1, ncols, nrows, "output/feat99.ppm");
   KLTWriteFeatureListToPPM(fl, img1, ncols, nrows, "feat0.ppm");
 
-  for (i = 1 ; i < nFrames ; i++)  {
-    sprintf(fnamein, "../../data/img%d.pgm", i);
+  for (i = 100 ; i < nFrames ; i++)  {
+    sprintf(fnamein, "../../data/750/frame_%d.pgm", i);
+	  //sprintf(fnamein, "../../data/img%d.pgm", i); // for old dataset
     pgmReadFile(fnamein, img2, &ncols, &nrows);
     KLTTrackFeatures(tc, img1, img2, ncols, nrows, fl);
 #ifdef REPLACE
