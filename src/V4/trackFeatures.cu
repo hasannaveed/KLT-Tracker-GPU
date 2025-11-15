@@ -1,8 +1,6 @@
 /*********************************************************************
  * trackFeatures_optimized_globalcache.cu
- *
- * OpenACC version - replaces previous CUDA-kernel implementations
- *
+ 
  *********************************************************************/
 
 #include <assert.h>
@@ -21,8 +19,6 @@
 #include "klt_util.h"   /* _KLT_FloatImage */
 #include "pyramid.h"    /* _KLT_Pyramid */
 
-#include <openacc.h>
-
 extern int KLT_verbose;
 typedef float *_FloatWindow;
 
@@ -38,25 +34,24 @@ inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=t
    Persistent cache struct
    ------------------------- */
 typedef struct {
-    float *d_ptr;     // device pointer (unused in OpenACC path but kept for compatibility)
+    float *d_ptr;     // device pointer
     int width;        // image width
     int height;       // image height
     size_t capacity;  // allocated elements (width*height)
     bool valid;
 } ImgCache;
 
-/* Static persistent caches for the four gradient images (kept for compatibility) */
+/* Static persistent caches for the four gradient images */
 static ImgCache cache_gx1 = {0,0,0,0,false};
 static ImgCache cache_gy1 = {0,0,0,0,false};
 static ImgCache cache_gx2 = {0,0,0,0,false};
 static ImgCache cache_gy2 = {0,0,0,0,false};
 
-/* Static stream flags (not used by OpenACC but kept to avoid changing other code) */
+/* Static stream to avoid creating stream per call */
 static cudaStream_t cached_stream = NULL;
 static bool stream_initialized = false;
 
-/* Helper to ensure a device buffer is allocated with at least width*height capacity
-   (kept for compatibility; not used by the OpenACC implementations below) */
+/* Helper to ensure a device buffer is allocated with at least width*height capacity */
 static void ensure_device_image(ImgCache *c, int width, int height) {
     size_t elems = (size_t)width * (size_t)height;
     if (c->valid && c->width == width && c->height == height && c->capacity >= elems) {
@@ -79,18 +74,16 @@ static void ensure_device_image(ImgCache *c, int width, int height) {
     c->valid = true;
 }
 
-/* -------------------------
-   Replace CUDA kernels with OpenACC parallel loops
-   ------------------------- */
+// Put these near the other kernels / device helpers in trackFeatures.cu
 
-/* host-side bilinear sampler matching device semantics used previously
-   returns 0 for out-of-bounds samples exactly like original CUDA device sampler */
-static inline float host_sampleBilinear(const float *img, int img_w, int img_h, float fx, float fy) {
+// simple bilinear sampler for float images (width = img_w, height = img_h)
+// returns 0 for out-of-bounds coordinates
+static __device__ inline float sampleBilinear(const float *img, int img_w, int img_h, float fx, float fy) {
     if (fx < 0.f || fy < 0.f || fx > (float)(img_w-1) || fy > (float)(img_h-1)) return 0.0f;
     int x0 = (int)floorf(fx);
     int y0 = (int)floorf(fy);
-    int x1 = x0 + 1; if (x1 >= img_w) x1 = img_w - 1;
-    int y1 = y0 + 1; if (y1 >= img_h) y1 = img_h - 1;
+    int x1 = min(x0 + 1, img_w - 1);
+    int y1 = min(y0 + 1, img_h - 1);
     float dx = fx - (float)x0;
     float dy = fy - (float)y0;
     float v00 = img[y0 * img_w + x0];
@@ -102,136 +95,126 @@ static inline float host_sampleBilinear(const float *img, int img_w, int img_h, 
     return v0 * (1.0f - dy) + v1 * dy;
 }
 
-/* Batched version using OpenACC directives.
-   Mirrors original logic: for each feature/window compute bilinear samples of 4 gradient images,
-   store sum-of-gradients per pixel in output arrays out_gradx_all / out_grady_all.
-*/
-void _computeGradientSum_CUDA_batched(
-    _KLT_FloatImage gradx1, _KLT_FloatImage grady1,
-    _KLT_FloatImage gradx2, _KLT_FloatImage grady2,
-    const float *features_x1, const float *features_y1,
-    const float *features_x2, const float *features_y2,
-    int count, int win_w, int win_h,
-    _FloatWindow out_gradx_all, _FloatWindow out_grady_all)
+// Kernel: one block per window in batch; threads in block sample pixels in window
+// blockDim.x * blockDim.y must be >= win_w * win_h (we guard with bounds)
+extern "C" __global__
+void _computeGradientSumKernelBatched(
+    const float *d_gx1, const float *d_gy1,
+    const float *d_gx2, const float *d_gy2,
+    const float *d_x1, const float *d_y1,
+    const float *d_x2, const float *d_y2,
+    int img_w, int img_h,
+    int win_w, int win_h,
+    float *d_out_gx_all, float *d_out_gy_all,
+    int batchN)
 {
-    if (count <= 0) return;
-    if (!gradx1 || !grady1 || !gradx2 || !grady2) return;
-    if (!features_x1 || !features_y1 || !features_x2 || !features_y2) return;
-    if (!out_gradx_all || !out_grady_all) return;
-    if (win_w <= 0 || win_h <= 0) return;
+    int fid = blockIdx.x;                // feature/window index
+    if (fid >= batchN) return;
 
-    const int img_w = gradx1->ncols;
-    const int img_h = gradx1->nrows;
-    const int win_elems = win_w * win_h;
-    const size_t total_out_elems = (size_t)win_elems * (size_t)count;
+    // per-window offsets in output arrays
+    int win_elems = win_w * win_h;
+    float *out_gx = d_out_gx_all + (size_t)fid * win_elems;
+    float *out_gy = d_out_gy_all + (size_t)fid * win_elems;
 
-    /* Use OpenACC data region to transfer images and coordinate arrays to the device.
-       We copyout the full batched result array at the end. */
-    #pragma acc data copyin(gradx1->data[0:(size_t)img_w*img_h], \
-                             grady1->data[0:(size_t)img_w*img_h], \
-                             gradx2->data[0:(size_t)img_w*img_h], \
-                             grady2->data[0:(size_t)img_w*img_h], \
-                             features_x1[0:count], features_y1[0:count], \
-                             features_x2[0:count], features_y2[0:count]) \
-                     copyout(out_gradx_all[0:total_out_elems], out_grady_all[0:total_out_elems])
-    {
-        /* Parallelize outer loop (features/windows) using gang. Inner loops over window pixels are vectorized.
-           This maps each window to a parallel gang (coarse grain) and pixels inside to vector lanes. */
-        #pragma acc parallel loop gang present(gradx1->data,grady1->data,gradx2->data,grady2->data, \
-                                             features_x1,features_y1,features_x2,features_y2, \
-                                             out_gradx_all,out_grady_all)
-        for (int fid = 0; fid < count; ++fid) {
-            const float cx1 = features_x1[fid];
-            const float cy1 = features_y1[fid];
-            const float cx2 = features_x2[fid];
-            const float cy2 = features_y2[fid];
+    // get centers
+    float cx1 = d_x1[fid];
+    float cy1 = d_y1[fid];
+    float cx2 = d_x2[fid];
+    float cy2 = d_y2[fid];
 
-            float *out_gx = out_gradx_all + (size_t)fid * win_elems;
-            float *out_gy = out_grady_all + (size_t)fid * win_elems;
+    // thread coordinates inside block
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+    int bx = blockDim.x; int by = blockDim.y;
 
-            /* collapse inner loops to expose 2D parallelism and vectorize them */
-            #pragma acc loop vector collapse(2)
-            for (int v = 0; v < win_h; ++v) {
-                for (int u = 0; u < win_w; ++u) {
-                    int hw = win_w / 2;
-                    int hh = win_h / 2;
-                    float sample_x1 = cx1 + (float)(u - hw);
-                    float sample_y1 = cy1 + (float)(v - hh);
-                    float sample_x2 = cx2 + (float)(u - hw);
-                    float sample_y2 = cy2 + (float)(v - hh);
+    // iterate over window pixels by mapping (u,v) = tx + i*bx, ty + j*by
+    for (int v = ty; v < win_h; v += by) {
+        for (int u = tx; u < win_w; u += bx) {
+            // compute sample positions relative to window center
+            // original code uses integer offsets i,j from -hw..hw; match that:
+            int hw = win_w / 2;
+            int hh = win_h / 2;
+            float sample_x1 = cx1 + (float)(u - hw);
+            float sample_y1 = cy1 + (float)(v - hh);
+            float sample_x2 = cx2 + (float)(u - hw);
+            float sample_y2 = cy2 + (float)(v - hh);
 
-                    float gx1 = host_sampleBilinear(gradx1->data, img_w, img_h, sample_x1, sample_y1);
-                    float gy1 = host_sampleBilinear(grady1->data, img_w, img_h, sample_x1, sample_y1);
-                    float gx2 = host_sampleBilinear(gradx2->data, img_w, img_h, sample_x2, sample_y2);
-                    float gy2 = host_sampleBilinear(grady2->data, img_w, img_h, sample_x2, sample_y2);
+            float gx1 = sampleBilinear(d_gx1, img_w, img_h, sample_x1, sample_y1);
+            float gy1 = sampleBilinear(d_gy1, img_w, img_h, sample_x1, sample_y1);
+            float gx2 = sampleBilinear(d_gx2, img_w, img_h, sample_x2, sample_y2);
+            float gy2 = sampleBilinear(d_gy2, img_w, img_h, sample_x2, sample_y2);
 
-                    int idx = v * win_w + u;
-                    out_gx[idx] = gx1 + gx2;
-                    out_gy[idx] = gy1 + gy2;
-                }
-            }
+            int idx = v * win_w + u;
+            out_gx[idx] = gx1 + gx2; // original "gradient sum" semantics: sum across images
+            out_gy[idx] = gy1 + gy2;
         }
-    } /* end acc data region */
+    }
 }
 
-/* Per-window (single window) OpenACC implementation.
-   Produces gradx[], grady[] for a single window centered at (x1,y1) and (x2,y2).
-*/
-void _computeGradientSum_CUDA(
-    _KLT_FloatImage gradx1,
-    _KLT_FloatImage grady1,
-    _KLT_FloatImage gradx2,
-    _KLT_FloatImage grady2,
-    float x1, float y1,
-    float x2, float y2,
-    int win_w, int win_h,     // size of window
-    _FloatWindow gradx,       // output pointers (host)
-    _FloatWindow grady)
+/* Kernel: 2D launch (blockDim.x * blockDim.y) - each thread computes one output sample */
+__global__ void _computeGradientSumKernelGlobal(
+    const float* __restrict__ gradx1,
+    const float* __restrict__ grady1,
+    const float* __restrict__ gradx2,
+    const float* __restrict__ grady2,
+    float x1, float y1, float x2, float y2,
+    int img_width, int img_height,
+    int win_w, int win_h,
+    float* gradx_out, float* grady_out)
 {
-    /* Quick checks */
-    if (!gradx1 || !grady1 || !gradx2 || !grady2) return;
-    if (!gradx || !grady) return;
-    if (win_w <= 0 || win_h <= 0) return;
+    // thread-local within window
+    int local_x = blockIdx.x * blockDim.x + threadIdx.x; // column in window [0, win_w)
+    int local_y = blockIdx.y * blockDim.y + threadIdx.y; // row in window [0, win_h)
 
-    const int img_w = gradx1->ncols;
-    const int img_h = gradx1->nrows;
-    size_t win_elems = (size_t)win_w * (size_t)win_h;
+    if (local_x >= win_w || local_y >= win_h) return;
 
-    /* Move the gradient images to device and compute the window there, copying out only the window result */
-    #pragma acc data copyin(gradx1->data[0:(size_t)img_w*img_h], \
-                             grady1->data[0:(size_t)img_w*img_h], \
-                             gradx2->data[0:(size_t)img_w*img_h], \
-                             grady2->data[0:(size_t)img_w*img_h]) \
-                     copyout(gradx[0:win_elems], grady[0:win_elems])
-    {
-        /* Single parallel region; collapse 2D window loops and map to gang/worker/vector.
-           This preserves the per-pixel sampling and sum-of-gradients semantics. */
-        #pragma acc parallel present(gradx1->data,grady1->data,gradx2->data,grady2->data, gradx, grady)
-        {
-            #pragma acc loop gang collapse(2)
-            for (int local_y = 0; local_y < win_h; ++local_y) {
-                for (int local_x = 0; local_x < win_w; ++local_x) {
-                    int i = local_x - (win_w / 2);
-                    int j = local_y - (win_h / 2);
+    int i = local_x - (win_w / 2);
+    int j = local_y - (win_h / 2);
 
-                    float sx1 = x1 + (float)i;
-                    float sy1 = y1 + (float)j;
-                    float sx2 = x2 + (float)i;
-                    float sy2 = y2 + (float)j;
+    // sample coords in image space
+    float sx1 = x1 + (float)i;
+    float sy1 = y1 + (float)j;
+    float sx2 = x2 + (float)i;
+    float sy2 = y2 + (float)j;
 
-                    float gx1 = host_sampleBilinear(gradx1->data, img_w, img_h, sx1, sy1);
-                    float gy1 = host_sampleBilinear(grady1->data, img_w, img_h, sx1, sy1);
-                    float gx2 = host_sampleBilinear(gradx2->data, img_w, img_h, sx2, sy2);
-                    float gy2 = host_sampleBilinear(grady2->data, img_w, img_h, sx2, sy2);
+    // helper lambda-like logic inline for bilinear interpolation with boundary checks
+    auto sample_bilinear = [&](const float* img, float sx, float sy) -> float {
+        // if outside or at border where neighbors unavailable, return 0
+        // we want valid ix in [0, img_width-2] and iy in [0, img_height-2] for 4-neighbor sample
+        if (sx < 0.0f || sy < 0.0f || sx >= (float)(img_width - 1) || sy >= (float)(img_height - 1)) {
+            // clamp strategy instead of returning 0 might be used, but original code returned 0 for out-of-bounds
+            return 0.0f;
+        }
+        int ix = (int)floorf(sx);
+        int iy = (int)floorf(sy);
+        float a = sx - (float)ix;
+        float b = sy - (float)iy;
 
-                    int out_idx = local_y * win_w + local_x;
-                    gradx[out_idx] = gx1 + gx2;
-                    grady[out_idx] = gy1 + gy2;
-                }
-            }
-        } /* end parallel */
-    } /* end data */
+        // compute indices for four neighbors, read from global memory (coalesced if accesses aligned)
+        int base = iy * img_width + ix;
+        float v00 = img[base];
+        float v01 = img[base + 1];
+        float v10 = img[base + img_width];
+        float v11 = img[base + img_width + 1];
+
+        // bilinear
+        return (1.0f - a) * (1.0f - b) * v00
+             + a * (1.0f - b) * v01
+             + (1.0f - a) * b * v10
+             + a * b * v11;
+    };
+
+    float gx1 = sample_bilinear(gradx1, sx1, sy1);
+    float gy1 = sample_bilinear(grady1, sx1, sy1);
+    float gx2 = sample_bilinear(gradx2, sx2, sy2);
+    float gy2 = sample_bilinear(grady2, sx2, sy2);
+
+    int out_idx = local_y * win_w + local_x;
+    gradx_out[out_idx] = gx1 + gx2;
+    grady_out[out_idx] = gy1 + gy2;
 }
+
+
 
 /* Extern "C" wrapper - signature preserved */
 #ifdef __cplusplus
@@ -258,8 +241,8 @@ void _compute2by1ErrorVectorRaw(float *gradx, float *grady, int w, int h,
 
 
 static float _interpolate(
-  float x,
-  float y,
+  float x, 
+  float y, 
   _KLT_FloatImage img)
 {
   int xt = (int) x;  /* coordinates of top-left corner */
@@ -308,6 +291,265 @@ static void _computeIntensityDifference(
 static inline void _freeFloatWindow(_FloatWindow fw)
 {
     if (fw) free(fw);
+}
+
+
+void _computeGradientSum_CUDA_batched(
+    _KLT_FloatImage gradx1, _KLT_FloatImage grady1,
+    _KLT_FloatImage gradx2, _KLT_FloatImage grady2,
+    const float *features_x1, const float *features_y1,
+    const float *features_x2, const float *features_y2,
+    int count, int win_w, int win_h,
+    _FloatWindow out_gradx_all, _FloatWindow out_grady_all)
+{
+    if (count <= 0) return;
+
+    const int img_w = gradx1->ncols;
+    const int img_h = gradx1->nrows;
+    const size_t img_elems = (size_t)img_w * img_h;
+    const size_t img_bytes = img_elems * sizeof(float);
+    const int win_elems = win_w * win_h;
+    const size_t batch_out_bytes = (size_t)win_elems * count * sizeof(float);
+
+    // static cached allocations to avoid repeated cudaMalloc/free
+    static float *d_gx1 = NULL, *d_gy1 = NULL, *d_gx2 = NULL, *d_gy2 = NULL;
+    static size_t d_img_capacity = 0;
+    static float *d_x1 = NULL, *d_y1 = NULL, *d_x2 = NULL, *d_y2 = NULL;
+    static float *d_out_gx_all = NULL, *d_out_gy_all = NULL;
+    static size_t d_out_capacity = 0;
+
+    static float *h_x1_pinned = NULL, *h_y1_pinned = NULL, *h_x2_pinned = NULL, *h_y2_pinned = NULL;
+    static float *h_out_gx_pinned = NULL, *h_out_gy_pinned = NULL;
+    static size_t h_coords_capacity = 0, h_out_capacity = 0;
+
+    static cudaStream_t stream = 0;
+    static bool stream_inited = false;
+    if (!stream_inited) { cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking); stream_inited = true; }
+
+    // allocate device image buffers once (each holds one image)
+    size_t required_img_bytes = img_bytes; // single image
+    if (d_img_capacity < required_img_bytes) {
+        // free previous
+        if (d_gx1) { cudaFree(d_gx1); cudaFree(d_gy1); cudaFree(d_gx2); cudaFree(d_gy2); }
+        cudaMalloc((void**)&d_gx1, required_img_bytes);
+        cudaMalloc((void**)&d_gy1, required_img_bytes);
+        cudaMalloc((void**)&d_gx2, required_img_bytes);
+        cudaMalloc((void**)&d_gy2, required_img_bytes);
+        d_img_capacity = required_img_bytes;
+    }
+
+    // copy full images to device once (synchronous with stream ordering)
+    // Use pinned host staging if grad images are not pinned already
+    // If gradx1->data is not pinned, copying from it is fine but async benefits pinned buffers
+    // We'll do synchronous cudaMemcpy (or async from pinned if available). Simpler: use cudaMemcpyAsync from host pointer
+    cudaMemcpyAsync(d_gx1, gradx1->data, img_bytes, cudaMemcpyHostToDevice, stream);
+    cudaMemcpyAsync(d_gy1, grady1->data, img_bytes, cudaMemcpyHostToDevice, stream);
+    cudaMemcpyAsync(d_gx2, gradx2->data, img_bytes, cudaMemcpyHostToDevice, stream);
+    cudaMemcpyAsync(d_gy2, grady2->data, img_bytes, cudaMemcpyHostToDevice, stream);
+
+    // allocate/pin host coordinate arrays (cached)
+    size_t coords_bytes = (size_t)count * sizeof(float);
+    if (h_coords_capacity < coords_bytes) {
+        if (h_x1_pinned) { cudaFreeHost(h_x1_pinned); cudaFreeHost(h_y1_pinned); cudaFreeHost(h_x2_pinned); cudaFreeHost(h_y2_pinned); }
+        cudaMallocHost((void**)&h_x1_pinned, coords_bytes);
+        cudaMallocHost((void**)&h_y1_pinned, coords_bytes);
+        cudaMallocHost((void**)&h_x2_pinned, coords_bytes);
+        cudaMallocHost((void**)&h_y2_pinned, coords_bytes);
+        h_coords_capacity = coords_bytes;
+    }
+
+    // copy coordinates into pinned host buffers (they're host pointers already, but pinning helps if large batches)
+    memcpy(h_x1_pinned, features_x1, coords_bytes);
+    memcpy(h_y1_pinned, features_y1, coords_bytes);
+    memcpy(h_x2_pinned, features_x2, coords_bytes);
+    memcpy(h_y2_pinned, features_y2, coords_bytes);
+
+    // allocate device coordinate arrays sized for count
+    size_t coord_dev_bytes = coords_bytes;
+    if (!d_x1 || d_out_capacity < (size_t)count) { // lazy allocate or reallocate
+        if (d_x1) { cudaFree(d_x1); cudaFree(d_y1); cudaFree(d_x2); cudaFree(d_y2); }
+        cudaMalloc((void**)&d_x1, coord_dev_bytes);
+        cudaMalloc((void**)&d_y1, coord_dev_bytes);
+        cudaMalloc((void**)&d_x2, coord_dev_bytes);
+        cudaMalloc((void**)&d_y2, coord_dev_bytes);
+    }
+
+    // async H->D coords
+    cudaMemcpyAsync(d_x1, h_x1_pinned, coord_dev_bytes, cudaMemcpyHostToDevice, stream);
+    cudaMemcpyAsync(d_y1, h_y1_pinned, coord_dev_bytes, cudaMemcpyHostToDevice, stream);
+    cudaMemcpyAsync(d_x2, h_x2_pinned, coord_dev_bytes, cudaMemcpyHostToDevice, stream);
+    cudaMemcpyAsync(d_y2, h_y2_pinned, coord_dev_bytes, cudaMemcpyHostToDevice, stream);
+
+    // allocate device outputs for all windows if needed
+    size_t required_out_bytes = batch_out_bytes;
+    if (d_out_capacity < required_out_bytes) {
+        if (d_out_gx_all) { cudaFree(d_out_gx_all); cudaFree(d_out_gy_all); }
+        cudaMalloc((void**)&d_out_gx_all, required_out_bytes);
+        cudaMalloc((void**)&d_out_gy_all, required_out_bytes);
+        d_out_capacity = required_out_bytes;
+    }
+
+    // allocate pinned host output buffers if needed
+    if (h_out_capacity < required_out_bytes) {
+        if (h_out_gx_pinned) { cudaFreeHost(h_out_gx_pinned); cudaFreeHost(h_out_gy_pinned); }
+        cudaMallocHost((void**)&h_out_gx_pinned, required_out_bytes);
+        cudaMallocHost((void**)&h_out_gy_pinned, required_out_bytes);
+        h_out_capacity = required_out_bytes;
+    }
+
+    // Ensure device copies of images + coords are visible before kernel (they are on same stream)
+    // Launch a single kernel with one block per window
+    // Choose blockDim to cover typical window sizes; use 16x16 (works up to 16x16 windows without wasted loops)
+    const int BLK_X = min(32, max(8, win_w)); // choose block dims safely (<= 32)
+    const int BLK_Y = min(32, max(8, win_h));
+    dim3 block(BLK_X, BLK_Y);
+    dim3 grid(count, 1, 1);
+
+    // single launch processes all windows in parallel
+    _computeGradientSumKernelBatched<<<grid, block, 0, stream>>>(
+        d_gx1, d_gy1, d_gx2, d_gy2,
+        d_x1, d_y1, d_x2, d_y2,
+        img_w, img_h, win_w, win_h,
+        d_out_gx_all, d_out_gy_all,
+        count);
+
+    // Copy device outputs back to pinned host in one D->H
+    cudaMemcpyAsync(h_out_gx_pinned, d_out_gx_all, required_out_bytes, cudaMemcpyDeviceToHost, stream);
+    cudaMemcpyAsync(h_out_gy_pinned, d_out_gy_all, required_out_bytes, cudaMemcpyDeviceToHost, stream);
+
+    // Wait for the stream to complete the work
+    cudaStreamSynchronize(stream);
+
+    // Copy pinned host outputs into caller's output arrays (these are plain host buffers)
+    memcpy(out_gradx_all, h_out_gx_pinned, required_out_bytes);
+    memcpy(out_grady_all, h_out_gy_pinned, required_out_bytes);
+
+    // done (keep device/pinned buffers cached for reuse)
+    return;
+}
+
+void _computeGradientSum_CUDA(
+    _KLT_FloatImage gradx1,
+    _KLT_FloatImage grady1,
+    _KLT_FloatImage gradx2,
+    _KLT_FloatImage grady2,
+    float x1, float y1,
+    float x2, float y2,
+    int win_w, int win_h,     // size of window
+    _FloatWindow gradx,       // output pointers (host)
+    _FloatWindow grady)
+{
+    /* Quick checks */
+    if (!gradx1 || !grady1 || !gradx2 || !grady2) return;
+    if (!gradx || !grady) return;
+    if (win_w <= 0 || win_h <= 0) return;
+
+    const int img_w = gradx1->ncols;
+    const int img_h = gradx1->nrows;
+    size_t img_elems = (size_t)img_w * (size_t)img_h;
+    size_t img_bytes = img_elems * sizeof(float);
+    size_t win_elems = (size_t)win_w * (size_t)win_h;
+    size_t win_bytes = win_elems * sizeof(float);
+
+    // Static persistent device-side gradient buffer (4 images packed)
+    static float *d_grad_pack = NULL;
+    static size_t d_grad_pack_capacity = 0; // in bytes
+    // Pointers into d_grad_pack for the four gradient images
+    float *d_gx1 = NULL, *d_gy1 = NULL, *d_gx2 = NULL, *d_gy2 = NULL;
+
+    // Static cached stream for asynchronous ops
+    static cudaStream_t cached_stream = 0;
+    static bool stream_init = false;
+
+    // Host pinned staging buffer for packed gradients
+    static float *h_grad_pack_pinned = NULL;
+    static size_t h_grad_pack_capacity = 0; // in bytes
+
+    // Static device output buffers (for window result) and pinned host buffers
+    static float *d_out_gx = NULL, *d_out_gy = NULL;
+    static float *h_out_gx_pinned = NULL, *h_out_gy_pinned = NULL;
+    static size_t d_out_capacity = 0;
+    static size_t h_out_capacity = 0;
+
+    if (!stream_init) {
+        CUDA_CHECK(cudaStreamCreateWithFlags(&cached_stream, cudaStreamNonBlocking));
+        stream_init = true;
+    }
+
+    // Ensure packed device gradient buffer has enough capacity (4 * img_bytes)
+    size_t required_d_grad_bytes = img_bytes * 4;
+    if (d_grad_pack_capacity < required_d_grad_bytes) {
+        if (d_grad_pack) CUDA_CHECK(cudaFree(d_grad_pack));
+        CUDA_CHECK(cudaMalloc((void**)&d_grad_pack, required_d_grad_bytes));
+        d_grad_pack_capacity = required_d_grad_bytes;
+    }
+    // Set per-image device pointers as slices of packed buffer
+    d_gx1 = d_grad_pack + 0 * img_elems;
+    d_gy1 = d_grad_pack + 1 * img_elems;
+    d_gx2 = d_grad_pack + 2 * img_elems;
+    d_gy2 = d_grad_pack + 3 * img_elems;
+
+    // Ensure host pinned staging buffer exists and is large enough
+    size_t required_h_grad_bytes = required_d_grad_bytes;
+    if (h_grad_pack_capacity < required_h_grad_bytes) {
+        if (h_grad_pack_pinned) CUDA_CHECK(cudaFreeHost(h_grad_pack_pinned));
+        CUDA_CHECK(cudaMallocHost((void**)&h_grad_pack_pinned, required_h_grad_bytes));
+        h_grad_pack_capacity = required_h_grad_bytes;
+    }
+
+    // Pack the four gradient images into the pinned host buffer (contiguous)
+    // Note: source gradx1->data etc may be regular host memory
+    float *hp = h_grad_pack_pinned;
+    memcpy(hp + 0*img_elems, gradx1->data, img_bytes);
+    memcpy(hp + 1*img_elems, grady1->data, img_bytes);
+    memcpy(hp + 2*img_elems, gradx2->data, img_bytes);
+    memcpy(hp + 3*img_elems, grady2->data, img_bytes);
+
+    // Single H->D copy for all gradients into d_grad_pack
+    CUDA_CHECK(cudaMemcpyAsync(d_grad_pack, h_grad_pack_pinned, required_h_grad_bytes, cudaMemcpyHostToDevice, cached_stream));
+
+    // Ensure device output buffers (one per window) and pinned host output buffers are large enough
+    if (d_out_capacity < win_bytes) {
+        if (d_out_gx) CUDA_CHECK(cudaFree(d_out_gx));
+        if (d_out_gy) CUDA_CHECK(cudaFree(d_out_gy));
+        CUDA_CHECK(cudaMalloc((void**)&d_out_gx, win_bytes));
+        CUDA_CHECK(cudaMalloc((void**)&d_out_gy, win_bytes));
+        d_out_capacity = win_bytes;
+    }
+    if (h_out_capacity < win_bytes) {
+        if (h_out_gx_pinned) CUDA_CHECK(cudaFreeHost(h_out_gx_pinned));
+        if (h_out_gy_pinned) CUDA_CHECK(cudaFreeHost(h_out_gy_pinned));
+        CUDA_CHECK(cudaMallocHost((void**)&h_out_gx_pinned, win_bytes));
+        CUDA_CHECK(cudaMallocHost((void**)&h_out_gy_pinned, win_bytes));
+        h_out_capacity = win_bytes;
+    }
+
+    // Launch kernel on cached_stream; kernel will use device slices d_gx1,d_gy1,d_gx2,d_gy2
+    dim3 block(16, 16);
+    dim3 grid( (win_w + block.x - 1) / block.x,
+               (win_h + block.y - 1) / block.y );
+
+    // Note: _computeGradientSumKernelGlobal expects pointers to image gradients
+    _computeGradientSumKernelGlobal<<<grid, block, 0, cached_stream>>>(
+        d_gx1, d_gy1, d_gx2, d_gy2,
+        x1, y1, x2, y2,
+        img_w, img_h,
+        win_w, win_h,
+        d_out_gx, d_out_gy);
+
+    // Copy device window outputs -> pinned host buffers asynchronously
+    CUDA_CHECK(cudaMemcpyAsync(h_out_gx_pinned, d_out_gx, win_bytes, cudaMemcpyDeviceToHost, cached_stream));
+    CUDA_CHECK(cudaMemcpyAsync(h_out_gy_pinned, d_out_gy, win_bytes, cudaMemcpyDeviceToHost, cached_stream));
+
+    // Wait for operations on cached_stream to complete (only this stream)
+    CUDA_CHECK(cudaStreamSynchronize(cached_stream));
+
+    // Copy from pinned host buffers into user-provided output arrays (may be regular host memory)
+    memcpy(gradx, h_out_gx_pinned, win_bytes);
+    memcpy(grady, h_out_gy_pinned, win_bytes);
+
+    // Do not free cached buffers; they persist for future calls to reduce overhead.
+    return;
 }
 
 static void _computeIntensityDifferenceLightingInsensitive(

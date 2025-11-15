@@ -16,8 +16,8 @@ EXAMPLES = example1.c example2.c example3.c example4.c example5.c
 
 CPU_SRC = convolve.c selectGoodFeatures.c trackFeatures.c $(COMMON_C)
 # Use optimized OpenACC C version instead of CUDA version
-GPU_CU  = convolve.cu selectGoodFeatures.cu
-GPU_OPT = trackFeatures_opt.c
+GPU_CU  = convolve.cu 
+GPU_OPT = selectGoodFeatures_opt.c trackFeatures_opt.c
 
 # Only include .c files that don't have .cu counterparts
 GPU_C = $(filter-out convolve.c selectGoodFeatures.c trackFeatures.c, $(COMMON_C))

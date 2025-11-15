@@ -295,159 +295,162 @@ static float _minEigenvalue(float gxx, float gxy, float gyy)
 /*********************************************************************/
 
 void _KLTSelectGoodFeatures(
-    KLT_TrackingContext tc,
-    KLT_PixelType* img,
-    int ncols,
-    int nrows,
-    KLT_FeatureList featurelist,
-    selectionMode mode)
+  KLT_TrackingContext tc,
+  KLT_PixelType *img, 
+  int ncols, 
+  int nrows,
+  KLT_FeatureList featurelist,
+  selectionMode mode)
 {
-    _KLT_FloatImage floatimg, gradx, grady;
-    int window_hw, window_hh;
-    int* pointlist;
-    int npoints = 0;
-    KLT_BOOL overwriteAllFeatures = (mode == SELECTING_ALL) ? TRUE : FALSE;
-    KLT_BOOL floatimages_created = FALSE;
+  _KLT_FloatImage floatimg, gradx, grady;
+  int window_hw, window_hh;
+  int *pointlist;
+  int npoints = 0;
+  KLT_BOOL overwriteAllFeatures = (mode == SELECTING_ALL) ?
+    TRUE : FALSE;
+  KLT_BOOL floatimages_created = FALSE;
 
-    /* Check window size (and correct if necessary) */
-    if (tc->window_width % 2 != 1) {
-        tc->window_width = tc->window_width + 1;
-        KLTWarning("Tracking context's window width must be odd.  "
-            "Changing to %d.\n", tc->window_width);
-    }
-    if (tc->window_height % 2 != 1) {
-        tc->window_height = tc->window_height + 1;
-        KLTWarning("Tracking context's window height must be odd.  "
-            "Changing to %d.\n", tc->window_height);
-    }
-    if (tc->window_width < 3) {
-        tc->window_width = 3;
-        KLTWarning("Tracking context's window width must be at least three.  \n"
-            "Changing to %d.\n", tc->window_width);
-    }
-    if (tc->window_height < 3) {
-        tc->window_height = 3;
-        KLTWarning("Tracking context's window height must be at least three.  \n"
-            "Changing to %d.\n", tc->window_height);
-    }
-    window_hw = tc->window_width / 2;
-    window_hh = tc->window_height / 2;
+  /* Check window size (and correct if necessary) */
+  if (tc->window_width % 2 != 1) {
+    tc->window_width = tc->window_width+1;
+    KLTWarning("Tracking context's window width must be odd.  "
+               "Changing to %d.\n", tc->window_width);
+  }
+  if (tc->window_height % 2 != 1) {
+    tc->window_height = tc->window_height+1;
+    KLTWarning("Tracking context's window height must be odd.  "
+               "Changing to %d.\n", tc->window_height);
+  }
+  if (tc->window_width < 3) {
+    tc->window_width = 3;
+    KLTWarning("Tracking context's window width must be at least three.  \n"
+               "Changing to %d.\n", tc->window_width);
+  }
+  if (tc->window_height < 3) {
+    tc->window_height = 3;
+    KLTWarning("Tracking context's window height must be at least three.  \n"
+               "Changing to %d.\n", tc->window_height);
+  }
+  window_hw = tc->window_width/2; 
+  window_hh = tc->window_height/2;
+		
+  /* Create pointlist, which is a simplified version of a featurelist, */
+  /* for speed.  Contains only integer locations and values. */
+  pointlist = (int *) malloc(ncols * nrows * 3 * sizeof(int));
 
-    /* Create pointlist, which is a simplified version of a featurelist, */
-    /* for speed.  Contains only integer locations and values. */
-    pointlist = (int*)malloc(ncols * nrows * 3 * sizeof(int));
+  /* Create temporary images, etc. */
+  if (mode == REPLACING_SOME && 
+      tc->sequentialMode && tc->pyramid_last != NULL)  {
+    floatimg = ((_KLT_Pyramid) tc->pyramid_last)->img[0];
+    gradx = ((_KLT_Pyramid) tc->pyramid_last_gradx)->img[0];
+    grady = ((_KLT_Pyramid) tc->pyramid_last_grady)->img[0];
+    assert(gradx != NULL);
+    assert(grady != NULL);
+  } else  {
+    floatimages_created = TRUE;
+    floatimg = _KLTCreateFloatImage(ncols, nrows);
+    gradx    = _KLTCreateFloatImage(ncols, nrows);
+    grady    = _KLTCreateFloatImage(ncols, nrows);
+    if (tc->smoothBeforeSelecting)  {
+      _KLT_FloatImage tmpimg;
+      tmpimg = _KLTCreateFloatImage(ncols, nrows);
+      _KLTToFloatImage(img, ncols, nrows, tmpimg);
+      _KLTComputeSmoothedImage(tmpimg, _KLTComputeSmoothSigma(tc), floatimg);
+      _KLTFreeFloatImage(tmpimg);
+    } else _KLTToFloatImage(img, ncols, nrows, floatimg);
+ 
+    /* Compute gradient of image in x and y direction */
+    _KLTComputeGradients(floatimg, tc->grad_sigma, gradx, grady);
+  }
+	
+  /* Write internal images */
+  if (tc->writeInternalImages)  {
+    _KLTWriteFloatImageToPGM(floatimg, "kltimg_sgfrlf.pgm");
+    _KLTWriteFloatImageToPGM(gradx, "kltimg_sgfrlf_gx.pgm");
+    _KLTWriteFloatImageToPGM(grady, "kltimg_sgfrlf_gy.pgm");
+  }
 
-    /* Create temporary images, etc. */
-    if (mode == REPLACING_SOME &&
-        tc->sequentialMode && tc->pyramid_last != NULL) {
-        floatimg = ((_KLT_Pyramid)tc->pyramid_last)->img[0];
-        gradx = ((_KLT_Pyramid)tc->pyramid_last_gradx)->img[0];
-        grady = ((_KLT_Pyramid)tc->pyramid_last_grady)->img[0];
-        assert(gradx != NULL);
-        assert(grady != NULL);
-    }
-    else {
-        floatimages_created = TRUE;
-        floatimg = _KLTCreateFloatImage(ncols, nrows);
-        gradx = _KLTCreateFloatImage(ncols, nrows);
-        grady = _KLTCreateFloatImage(ncols, nrows);
-        if (tc->smoothBeforeSelecting) {
-            _KLT_FloatImage tmpimg;
-            tmpimg = _KLTCreateFloatImage(ncols, nrows);
-            _KLTToFloatImage(img, ncols, nrows, tmpimg);
-            _KLTComputeSmoothedImage(tmpimg, _KLTComputeSmoothSigma(tc), floatimg);
-            _KLTFreeFloatImage(tmpimg);
+  /* Compute trackability of each image pixel as the minimum
+     of the two eigenvalues of the Z matrix */
+  {
+    register float gx, gy;
+    register float gxx, gxy, gyy;
+    register int xx, yy;
+    register int *ptr;
+    float val;
+    unsigned int limit = 1;
+    int borderx = tc->borderx;	/* Must not touch cols */
+    int bordery = tc->bordery;	/* lost by convolution */
+    int x, y;
+    int i;
+	
+    if (borderx < window_hw)  borderx = window_hw;
+    if (bordery < window_hh)  bordery = window_hh;
+
+    /* Find largest value of an int */
+    for (i = 0 ; i < sizeof(int) ; i++)  limit *= 256;
+    limit = limit/2 - 1;
+		
+    /* For most of the pixels in the image, do ... */
+    ptr = pointlist;
+    for (y = bordery ; y < nrows - bordery ; y += tc->nSkippedPixels + 1)
+      for (x = borderx ; x < ncols - borderx ; x += tc->nSkippedPixels + 1)  {
+
+        /* Sum the gradients in the surrounding window */
+        gxx = 0;  gxy = 0;  gyy = 0;
+        for (yy = y-window_hh ; yy <= y+window_hh ; yy++)
+          for (xx = x-window_hw ; xx <= x+window_hw ; xx++)  {
+            gx = *(gradx->data + ncols*yy+xx);
+            gy = *(grady->data + ncols*yy+xx);
+            gxx += gx * gx;
+            gxy += gx * gy;
+            gyy += gy * gy;
+          }
+
+        /* Store the trackability of the pixel as the minimum
+           of the two eigenvalues */
+        *ptr++ = x;
+        *ptr++ = y;
+        val = _minEigenvalue(gxx, gxy, gyy);
+        if (val > limit)  {
+          KLTWarning("(_KLTSelectGoodFeatures) minimum eigenvalue %f is "
+                     "greater than the capacity of an int; setting "
+                     "to maximum value", val);
+          val = (float) limit;
         }
-        else _KLTToFloatImage(img, ncols, nrows, floatimg);
+        *ptr++ = (int) val;
+        npoints++;
+      }
+  }
+			
+  /* Sort the features  */
+  _sortPointList(pointlist, npoints);
 
-        /* Compute gradient of image in x and y direction */
-        _KLTComputeGradients(floatimg, tc->grad_sigma, gradx, grady);
-    }
+  /* Check tc->mindist */
+  if (tc->mindist < 0)  {
+    KLTWarning("(_KLTSelectGoodFeatures) Tracking context field tc->mindist "
+               "is negative (%d); setting to zero", tc->mindist);
+    tc->mindist = 0;
+  }
 
-    /* Write internal images if requested */
-    if (tc->writeInternalImages) {
-        _KLTWriteFloatImageToPGM(floatimg, "kltimg_sgfrlf.pgm");
-        _KLTWriteFloatImageToPGM(gradx, "kltimg_sgfrlf_gx.pgm");
-        _KLTWriteFloatImageToPGM(grady, "kltimg_sgfrlf_gy.pgm");
-    }
+  /* Enforce minimum distance between features */
+  _enforceMinimumDistance(
+    pointlist,
+    npoints,
+    featurelist,
+    ncols, nrows,
+    tc->mindist,
+    tc->min_eigenvalue,
+    overwriteAllFeatures);
 
-    /* --- Compute trackability of each image pixel using OpenACC --- */
-    {
-        int borderx = tc->borderx;	/* Must not touch cols */
-        int bordery = tc->bordery;	/* lost by convolution */
-        int x, y;
-        int xx, yy;
-
-        if (borderx < window_hw) borderx = window_hw;
-        if (bordery < window_hh) bordery = window_hh;
-
-        /* Find largest value of an int */
-        unsigned int limit = 1;
-        for (int i = 0; i < sizeof(int); i++) limit *= 256;
-        limit = limit / 2 - 1;
-
-        float* gradx_data = gradx->data;
-        float* grady_data = grady->data;
-        int step = tc->nSkippedPixels + 1;
-
-#pragma acc parallel loop collapse(2) copyin(gradx_data[0:ncols*nrows], grady_data[0:ncols*nrows]) copyout(pointlist[0:ncols*nrows*3])
-        for (y = bordery; y < nrows - bordery; y += step) {
-            for (x = borderx; x < ncols - borderx; x += step) {
-
-                float gxx = 0.0f, gxy = 0.0f, gyy = 0.0f;
-                for (yy = y - window_hh; yy <= y + window_hh; ++yy) {
-                    for (xx = x - window_hw; xx <= x + window_hw; ++xx) {
-                        float gx = gradx_data[yy * ncols + xx];
-                        float gy = grady_data[yy * ncols + xx];
-                        gxx += gx * gx;
-                        gxy += gx * gy;
-                        gyy += gy * gy;
-                    }
-                }
-
-                float val = _minEigenvalue(gxx, gxy, gyy);
-                if (val > limit) val = (float)limit;
-
-                int idx = ((y - bordery) / step) * ((ncols - 2 * borderx + step - 1) / step) + ((x - borderx) / step);
-                idx *= 3;
-                pointlist[idx + 0] = x;
-                pointlist[idx + 1] = y;
-                pointlist[idx + 2] = (int)val;
-            }
-        }
-
-        npoints = ((nrows - 2 * bordery + step - 1) / step) * ((ncols - 2 * borderx + step - 1) / step);
-    }
-
-    /* Sort the features */
-    _sortPointList(pointlist, npoints);
-
-    /* Check tc->mindist */
-    if (tc->mindist < 0) {
-        KLTWarning("(_KLTSelectGoodFeatures) Tracking context field tc->mindist "
-            "is negative (%d); setting to zero", tc->mindist);
-        tc->mindist = 0;
-    }
-
-    /* Enforce minimum distance between features */
-    _enforceMinimumDistance(
-        pointlist,
-        npoints,
-        featurelist,
-        ncols, nrows,
-        tc->mindist,
-        tc->min_eigenvalue,
-        overwriteAllFeatures);
-
-    /* Free memory */
-    free(pointlist);
-    if (floatimages_created) {
-        _KLTFreeFloatImage(floatimg);
-        _KLTFreeFloatImage(gradx);
-        _KLTFreeFloatImage(grady);
-    }
+  /* Free memory */
+  free(pointlist);
+  if (floatimages_created)  {
+    _KLTFreeFloatImage(floatimg);
+    _KLTFreeFloatImage(gradx);
+    _KLTFreeFloatImage(grady);
+  }
 }
-
 
 
 /*********************************************************************
