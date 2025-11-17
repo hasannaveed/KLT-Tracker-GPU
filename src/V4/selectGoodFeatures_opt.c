@@ -96,9 +96,6 @@ void _quicksort(int* pointlist, int n)
 }
 #undef SWAP3
 
-
-/*********************************************************************/
-
 static void _fillFeaturemap(
     int x, int y,
     uchar* featuremap,
@@ -113,7 +110,6 @@ static void _fillFeaturemap(
             if (ix >= 0 && ix < ncols && iy >= 0 && iy < nrows)
                 featuremap[iy * ncols + ix] = 1;
 }
-
 
 /*********************************************************************
  * _enforceMinimumDistance
@@ -146,7 +142,6 @@ static void _enforceMinimumDistance(
     uchar* featuremap; /* Boolean array recording proximity of features */
     int* ptr;
 
-    /* Cannot add features with an eigenvalue less than one */
     if (min_eigenvalue < 1)  min_eigenvalue = 1;
 
     /* Allocate memory for feature map and clear it */
@@ -156,7 +151,6 @@ static void _enforceMinimumDistance(
     /* Necessary because code below works with (mindist-1) */
     mindist--;
 
-    /* If we are keeping all old good features, then add them to the featuremap */
     if (!overwriteAllFeatures)
         for (indx = 0; indx < featurelist->nFeatures; indx++)
             if (featurelist->feature[indx]->val >= 0) {
@@ -169,9 +163,6 @@ static void _enforceMinimumDistance(
     ptr = pointlist;
     indx = 0;
     while (1) {
-
-        /* If we can't add all the points, then fill in the rest
-           of the featurelist with -1's */
         if (ptr >= pointlist + 3 * npoints) {
             while (indx < featurelist->nFeatures) {
                 if (overwriteAllFeatures ||
@@ -198,7 +189,7 @@ static void _enforceMinimumDistance(
         y = *ptr++;
         val = *ptr++;
 
-        /* Ensure that feature is in-bounds */
+        /* feature is in-bounds */
         assert(x >= 0);
         assert(x < ncols);
         assert(y >= 0);
@@ -211,8 +202,6 @@ static void _enforceMinimumDistance(
 
         if (indx >= featurelist->nFeatures)  break;
 
-        /* If no neighbor has been selected, and if the minimum
-           eigenvalue is large enough, then add feature to the current list */
         if (!featuremap[y * ncols + x] && val >= min_eigenvalue) {
             featurelist->feature[indx]->x = (KLT_locType)x;
             featurelist->feature[indx]->y = (KLT_locType)y;
@@ -364,7 +353,6 @@ void _KLTSelectGoodFeatures(
         _KLTComputeGradients(floatimg, tc->grad_sigma, gradx, grady);
     }
 
-    /* Write internal images if requested */
     if (tc->writeInternalImages) {
         _KLTWriteFloatImageToPGM(floatimg, "kltimg_sgfrlf.pgm");
         _KLTWriteFloatImageToPGM(gradx, "kltimg_sgfrlf_gx.pgm");
@@ -448,9 +436,6 @@ void _KLTSelectGoodFeatures(
     }
 }
 
-
-
-
 /*********************************************************************
  * KLTSelectGoodFeatures
  *
@@ -492,7 +477,6 @@ void KLTSelectGoodFeatures(
     }
 }
 
-
 /*********************************************************************
  * KLTReplaceLostFeatures
  *
@@ -524,7 +508,6 @@ void KLTReplaceLostFeatures(
         fflush(stderr);
     }
 
-    /* If there are any lost features, replace them */
     if (nLostFeatures > 0)
         _KLTSelectGoodFeatures(tc, img, ncols, nrows,
             fl, REPLACING_SOME);
@@ -537,5 +520,3 @@ void KLTReplaceLostFeatures(
         fflush(stderr);
     }
 }
-
-

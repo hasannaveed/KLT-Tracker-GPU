@@ -62,7 +62,6 @@ static void ensureDeviceBuffers(int ncols, int nrows) {
         d_buf0 = d_buf1 = NULL;
     }
 
-    // Allocate new buffers
     d_buf0 = (float*)malloc(elems * sizeof(float));
     d_buf1 = (float*)malloc(elems * sizeof(float));
     
@@ -71,7 +70,6 @@ static void ensureDeviceBuffers(int ncols, int nrows) {
         exit(1);
     }
 
-    // Create device data
     #pragma acc enter data create(d_buf0[0:elems])
     #pragma acc enter data create(d_buf1[0:elems])
     
@@ -308,19 +306,15 @@ void _KLTComputeSmoothedImage(
     memcpy(d_buf0, img->data, elems * sizeof(float));
     #pragma acc update device(d_buf0[0:elems])
     
-    // Copy kernel to device buffer
     memcpy(d_kernel_data, gauss_kernel.data, gauss_kernel.width * sizeof(float));
     #pragma acc update device(d_kernel_data[0:gauss_kernel.width])
     
-    // Horizontal convolution: d_buf0 -> d_buf1
     _convolveImageHorizGPU(d_buf0, d_buf1, ncols, nrows, 
                           d_kernel_data, gauss_kernel.width);
     
-    // Vertical convolution: d_buf1 -> d_buf0
     _convolveImageVertGPU(d_buf1, d_buf0, ncols, nrows,
                          d_kernel_data, gauss_kernel.width);
     
-    // Copy result back
     #pragma acc update host(d_buf0[0:elems])
     memcpy(smooth->data, d_buf0, elems * sizeof(float));
 }
@@ -357,7 +351,6 @@ void _KLTComputeGradients(
     memcpy(d_buf0, img->data, elems * sizeof(float));
     #pragma acc update device(d_buf0[0:elems])
     
-    // ===== Compute gradx =====
     // Horizontal with gaussderiv: d_buf0 -> d_buf1
     memcpy(d_kernel_data, gaussderiv_kernel.data, gaussderiv_kernel.width * sizeof(float));
     #pragma acc update device(d_kernel_data[0:gaussderiv_kernel.width])
@@ -372,16 +365,12 @@ void _KLTComputeGradients(
     _convolveImageVertGPU(d_buf1, d_buf0, ncols, nrows,
                          d_kernel_data, gauss_kernel.width);
     
-    // ===== Compute grady =====
     // Re-upload original input to d_buf1
     memcpy(d_buf1, img->data, elems * sizeof(float));
     #pragma acc update device(d_buf1[0:elems])
     
-    // Horizontal with gauss: d_buf1 -> d_buf1 (in-place safe after kernel finishes)
-    // Actually use a temp approach - we already uploaded to d_buf1, convolve to d_grady temp
     float *temp_buf = d_buf1; // input
     
-    // Create temp buffer for intermediate result
     float *temp_horiz = (float*)malloc(elems * sizeof(float));
     #pragma acc enter data create(temp_horiz[0:elems])
     
