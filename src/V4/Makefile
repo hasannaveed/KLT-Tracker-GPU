@@ -6,25 +6,6 @@ NVC      = nvc
 AR       = ar
 
 # =========================
-# Flags
-# =========================
-CFLAGS   = -O3 -DNDEBUG -fPIC -Wall
-NVCFLAGS = -O3 -acc -gpu=cc75 -DNDEBUG -fPIC -Minfo=accel
-LIBS     = -lm -lcudart
-
-# =========================
-# Source files
-# =========================
-CPU_SRC  =  error.c pnmio.c pyramid.c storeFeatures.c klt.c klt_util.c writeFeatures.c trackFeatures.c
-GPU_SRC  = convolve_opt.c selectGoodFeatures_opt.c 
-EXAMPLES := $(wildcard example*.c)
-
-OBJ_CPU  = $(CPU_SRC:.c=.o)
-OBJ_GPU  = $(GPU_SRC:.c=.o)
-GPU_LIB  = libklt_gpu.a
-EXECS    = $(EXAMPLES:.c=_GPU)
-
-# =========================
 # Default target
 # =========================
 all: $(EXECS)
