@@ -8,83 +8,89 @@ Processing [report_example3_GPU.sqlite] with [/opt/nvidia/hpc_sdk/Linux_x86_64/2
 
  Time (%)  Total Time (ns)  Num Calls    Avg (ns)      Med (ns)     Min (ns)    Max (ns)   StdDev (ns)           Name         
  --------  ---------------  ---------  ------------  ------------  ----------  ----------  -----------  ----------------------
-     49.5      87835604186        843   104194073.8   105356128.0        2024   106070129    6619777.6  poll                  
-     47.8      84941607290         20  4247080364.5  4009841041.5  3996743953  5617531606  581674959.2  pthread_cond_timedwait
-      2.5       4384494183     763510        5742.5        3782.0        1002   573880310     668078.7  ioctl                 
-      0.2        435419316       9055       48086.1        1278.0        1000   106169018    1167834.4  fread                 
-      0.0         14560304        133      109476.0       18726.0        1287     9223110     811228.4  fopen                 
-      0.0          1515277        113       13409.5        4708.0        1059      529009      54828.0  fclose                
-      0.0          1279488          5      255897.6        6508.0        5258     1144911     499275.0  open                  
-      0.0          1168420        103       11343.9       12558.0        1028       53642       7950.4  fwrite                
-      0.0           479629          6       79938.2       73348.0        1298      156526      63193.3  pthread_mutex_lock    
-      0.0           455391          2      227695.5      227695.5        1131      454260     320410.6  close                 
-      0.0           360669          3      120223.0      112661.0       94108      153900      30604.9  pthread_create        
-      0.0           283757         23       12337.3       11954.0        2299       27169       6900.9  mmap                  
-      0.0           246859          2      123429.5      123429.5       84941      161918      54431.0  sem_timedwait         
-      0.0           152311          1      152311.0      152311.0      152311      152311          0.0  pthread_cond_wait     
-      0.0           147820          1      147820.0      147820.0      147820      147820          0.0  pthread_join          
-      0.0            63478          4       15869.5       18119.5        1252       25987      10436.5  write                 
-      0.0            31959          1       31959.0       31959.0       31959       31959          0.0  fgets                 
-      0.0            24913          9        2768.1        2824.0        1007        4398       1329.5  fcntl                 
-      0.0            20855          1       20855.0       20855.0       20855       20855          0.0  pthread_cond_broadcast
-      0.0            18130          3        6043.3        7581.0        2224        8325       3328.5  pipe2                 
-      0.0            16043          1       16043.0       16043.0       16043       16043          0.0  fputc                 
-      0.0            13410          4        3352.5        1945.5        1117        8402       3390.4  fflush                
-      0.0             7152          4        1788.0        1840.5        1501        1970        202.2  read                  
+     54.3       5912966555         63    93856612.0   100192850.0        1663   100382854   22653736.1  poll                  
+     36.8       4000114575          1  4000114575.0  4000114575.0  4000114575  4000114575          0.0  pthread_cond_timedwait
+      8.4        912287897      36939       24697.1        3336.0         999   566205210    2981008.3  ioctl                 
+      0.4         40890584       5849        6991.0        1174.0         999    28009563     366679.3  fread                 
+      0.1          7379314        134       55069.5       17504.5        1076     2990006     290165.6  fopen                 
+      0.0          2710282          5      542056.4        5243.0        1751     2220236     960361.3  open                  
+      0.0          1250716        112       11167.1        4558.5        1133      678516      63700.2  fclose                
+      0.0           789665        100        7896.6        7298.0        1239       59333       7232.9  fwrite                
+      0.0           523150          3      174383.3       80780.0       50378      391992     189066.7  sem_timedwait         
+      0.0           321339          3      107113.0      106921.0       92624      121794      14585.9  pthread_create        
+      0.0           308070          2      154035.0      154035.0        1122      306948     216251.6  close                 
+      0.0           246172         23       10703.1        9646.0        1487       35424       7836.2  mmap                  
+      0.0           227712          1      227712.0      227712.0      227712      227712          0.0  pthread_join          
+      0.0            58241          1       58241.0       58241.0       58241       58241          0.0  pthread_cond_wait     
+      0.0            42730          4       10682.5       12986.0        1072       15686       6799.5  write                 
+      0.0            36955          3       12318.3        6544.0        1290       29121      14786.8  pipe2                 
+      0.0            25023          1       25023.0       25023.0       25023       25023          0.0  fgets                 
+      0.0            14821          1       14821.0       14821.0       14821       14821          0.0  pthread_cond_broadcast
+      0.0            13333          1       13333.0       13333.0       13333       13333          0.0  fputc                 
+      0.0            12318          6        2053.0        1544.0        1086        3788       1178.5  fcntl                 
+      0.0             9733          4        2433.3        1702.0        1246        5083       1784.3  read                  
+      0.0             5851          5        1170.2        1082.0        1010        1607        246.6  fflush                
 
 Processing [report_example3_GPU.sqlite] with [/opt/nvidia/hpc_sdk/Linux_x86_64/25.9/profilers/13.0/Nsight_Systems/host-linux-x64/reports/cuda_api_sum.py]... 
 
  ** CUDA API Summary (cuda_api_sum):
 
- Time (%)  Total Time (ns)  Num Calls   Avg (ns)    Med (ns)   Min (ns)  Max (ns)   StdDev (ns)           Name         
- --------  ---------------  ---------  ----------  ----------  --------  ---------  -----------  ----------------------
-     82.4      68832641603     156143    440830.8     71064.0      5460    3526026     454225.4  cuMemcpyHtoDAsync_v2  
-     11.6       9690496490     159798     60642.2      5839.5       254  398747145    1002106.8  cuStreamSynchronize   
-      4.7       3969862222      77970     50915.3     33193.5     15149   21250863     125723.7  cuMemcpyDtoHAsync_v2  
-      0.8        687663598      39899     17235.1     15078.0      6813    1188782      14262.0  cuLaunchKernel        
-      0.3        215677240          4  53919310.0      1809.5       460  215673161  107835900.7  cudaEventCreate       
-      0.2        131254698          2  65627349.0  65627349.0    886768  130367930   91557007.7  cuModuleLoadDataEx    
-      0.0         29970266        101    296735.3    267494.0    106249    1729416     175146.5  cudaEventSynchronize  
-      0.0          9141914         16    571369.6    405929.5      2696    1419656     597388.5  cuMemAlloc_v2         
-      0.0          7739631        202     38315.0     27476.0     16182    1401516      99373.5  cudaEventRecord       
-      0.0          3502081          1   3502081.0   3502081.0   3502081    3502081          0.0  cuMemAllocHost_v2     
-      0.0           275408          1    275408.0    275408.0    275408     275408          0.0  cuLinkComplete        
-      0.0            61293          1     61293.0     61293.0     61293      61293          0.0  cuCtxSetCurrent       
-      0.0            50952          1     50952.0     50952.0     50952      50952          0.0  cuLinkCreate          
-      0.0            11099          4      2774.8       535.5       378       9650       4585.0  cudaEventDestroy      
-      0.0             3073          1      3073.0      3073.0      3073       3073          0.0  cuInit                
-      0.0             1970          1      1970.0      1970.0      1970       1970          0.0  cuLinkDestroy         
-      0.0              724          1       724.0       724.0       724        724          0.0  cuMemFree_v2          
-      0.0              656          1       656.0       656.0       656        656          0.0  cuModuleGetLoadingMode
+ Time (%)  Total Time (ns)  Num Calls   Avg (ns)    Med (ns)   Min (ns)  Max (ns)   StdDev (ns)            Name           
+ --------  ---------------  ---------  ----------  ----------  --------  ---------  -----------  -------------------------
+     52.4       2129243499      10920    194985.7      9564.5      2358    2785889     372655.2  cudaMemcpyAsync          
+     15.3        623243630       5075    122806.6     15762.0       216    2243737     289346.8  cuStreamSynchronize      
+     11.8        481377127        609    790438.6    911097.0     90515    4554522     537244.2  cuMemcpyDtoHAsync_v2     
+     11.5        468165611       1421    329462.1     19459.0      4641    2501922     508090.3  cuMemcpyHtoDAsync_v2     
+      2.9        119311153          4  29827788.3      1073.0       683  119308324   59653690.5  cudaEventCreate          
+      2.7        111496628       1092    102103.1     93555.0      1866     590969      55093.9  cudaStreamSynchronize    
+      1.3         52320981          2  26160490.5  26160490.5    203447   52117534   36708803.0  cuModuleLoadDataEx       
+      0.7         30087299       1092     27552.5     21482.5      8112     349611      24520.3  cudaLaunchKernel         
+      0.6         22701160       1218     18638.1     11980.0      5240     257599      18565.4  cuLaunchKernel           
+      0.2          7278044        101     72059.8     57493.0     12088    1040272     104896.8  cudaEventSynchronize     
+      0.1          5826592        202     28844.5     21672.5     13010     579526      43984.7  cudaEventRecord          
+      0.1          3956498        606      6528.9      3318.5      2042      69021       7805.4  cudaMallocHost           
+      0.1          3593223          9    399247.0    387989.0      3359     908303     335273.0  cuMemAlloc_v2            
+      0.1          3391797        600      5653.0      3064.0      2129      64171       6427.7  cudaFreeHost             
+      0.1          3241433          1   3241433.0   3241433.0   3241433    3241433          0.0  cuMemAllocHost_v2        
+      0.0          1741117         14    124365.5      3628.5      1643     384696     170335.4  cudaMalloc               
+      0.0            92475          1     92475.0     92475.0     92475      92475          0.0  cuLinkComplete           
+      0.0            35176          1     35176.0     35176.0     35176      35176          0.0  cuLinkCreate             
+      0.0            15721          4      3930.3      2758.5      2206       7998       2753.9  cudaFree                 
+      0.0            13194          4      3298.5       379.0       294      12142       5896.0  cudaEventDestroy         
+      0.0             7483          1      7483.0      7483.0      7483       7483          0.0  cuCtxSetCurrent          
+      0.0             7443          1      7443.0      7443.0      7443       7443          0.0  cudaStreamCreateWithFlags
+      0.0             4674          1      4674.0      4674.0      4674       4674          0.0  cuInit                   
+      0.0             1091          1      1091.0      1091.0      1091       1091          0.0  cuMemFree_v2             
+      0.0              834          1       834.0       834.0       834        834          0.0  cuModuleGetLoadingMode   
+      0.0              654          1       654.0       654.0       654        654          0.0  cuLinkDestroy            
 
 Processing [report_example3_GPU.sqlite] with [/opt/nvidia/hpc_sdk/Linux_x86_64/25.9/profilers/13.0/Nsight_Systems/host-linux-x64/reports/cuda_gpu_kern_sum.py]... 
 
  ** CUDA GPU Kernel Summary (cuda_gpu_kern_sum):
 
- Time (%)  Total Time (ns)  Instances   Avg (ns)     Med (ns)    Min (ns)   Max (ns)   StdDev (ns)                             Name                           
- --------  ---------------  ---------  -----------  -----------  ---------  ---------  -----------  ----------------------------------------------------------
-     40.5        397871546          1  397871546.0  397871546.0  397871546  397871546          0.0  _24selectGoodFeatures_opt_c__KLTSelectGoodFeatures_393_gpu
-     40.4        397683921        609     653011.4     724322.0      48203    1785222     567846.0  _14convolve_opt_c__convolveImageVertGPU_266_gpu           
-     11.6        114221391        609     187555.7     279052.0      19658     329005     122450.6  _14convolve_opt_c__convolveImageHorizGPU_234_gpu          
-      7.5         73806865      38680       1908.1       1885.0       1615       2188         60.3  _19trackFeatures_opt_c__computeGradientSum_169_gpu        
+ Time (%)  Total Time (ns)  Instances  Avg (ns)  Med (ns)  Min (ns)  Max (ns)  StdDev (ns)                        Name                      
+ --------  ---------------  ---------  --------  --------  --------  --------  -----------  ------------------------------------------------
+     77.8        380643382        609  625030.2  687405.0     45537   2167832     548290.2  _14convolve_opt_c__convolveImageVertGPU_266_gpu 
+     21.6        105798375        609  173724.8  258533.0     18144    349040     114689.7  _14convolve_opt_c__convolveImageHorizGPU_234_gpu
+      0.6          3125723       1092    2862.4    2656.0      2208      4991        563.4  _computeGradientSumKernelBatched                
 
 Processing [report_example3_GPU.sqlite] with [/opt/nvidia/hpc_sdk/Linux_x86_64/25.9/profilers/13.0/Nsight_Systems/host-linux-x64/reports/cuda_gpu_mem_time_sum.py]... 
 
  ** CUDA GPU MemOps Summary (by Time) (cuda_gpu_mem_time_sum):
 
- Time (%)  Total Time (ns)  Count   Avg (ns)  Med (ns)  Min (ns)  Max (ns)  StdDev (ns)           Operation          
- --------  ---------------  ------  --------  --------  --------  --------  -----------  ----------------------------
-     99.2      65888223464  156143  421973.6   43995.0       269   3116658     436005.6  [CUDA memcpy Host-to-Device]
-      0.8        551811893   77970    7077.2    1010.0       841  20104127     108609.8  [CUDA memcpy Device-to-Host]
+ Time (%)  Total Time (ns)  Count  Avg (ns)  Med (ns)  Min (ns)  Max (ns)  StdDev (ns)           Operation          
+ --------  ---------------  -----  --------  --------  --------  --------  -----------  ----------------------------
+     85.7       2369819712  10157  233318.9    2048.0       256   2525168     395449.3  [CUDA memcpy Host-to-Device]
+     14.3        395834712   2793  141723.8    1409.0       800   3607955     346364.0  [CUDA memcpy Device-to-Host]
 
 Processing [report_example3_GPU.sqlite] with [/opt/nvidia/hpc_sdk/Linux_x86_64/25.9/profilers/13.0/Nsight_Systems/host-linux-x64/reports/cuda_gpu_mem_size_sum.py]... 
 
  ** CUDA GPU MemOps Summary (by Size) (cuda_gpu_mem_size_sum):
 
- Total (MB)  Count   Avg (MB)  Med (MB)  Min (MB)  Max (MB)  StdDev (MB)           Operation          
- ----------  ------  --------  --------  --------  --------  -----------  ----------------------------
- 620154.690  156143     3.972     0.518     0.000     8.294        3.867  [CUDA memcpy Host-to-Device]
-   3520.583   77970     0.045     0.000     0.000    24.883        0.605  [CUDA memcpy Device-to-Host]
+ Total (MB)  Count  Avg (MB)  Med (MB)  Min (MB)  Max (MB)  StdDev (MB)           Operation          
+ ----------  -----  --------  --------  --------  --------  -----------  ----------------------------
+  22012.955  10157     2.167     0.001     0.000     8.294        3.507  [CUDA memcpy Host-to-Device]
+   3495.902   2793     1.252     0.008     0.000     8.294        2.912  [CUDA memcpy Device-to-Host]
 
 Processing [report_example3_GPU.sqlite] with [/opt/nvidia/hpc_sdk/Linux_x86_64/25.9/profilers/13.0/Nsight_Systems/host-linux-x64/reports/openmp_sum.py]... 
 SKIPPED: report_example3_GPU.sqlite does not contain OpenMP event data.

@@ -15,8 +15,8 @@ LIBS     = -lm -lcudart
 # =========================
 # Source files
 # =========================
-CPU_SRC  =  error.c pnmio.c pyramid.c storeFeatures.c klt.c klt_util.c writeFeatures.c
-GPU_SRC  = convolve_opt.c selectGoodFeatures_opt.c trackFeatures_opt.c
+CPU_SRC  =  error.c pnmio.c pyramid.c storeFeatures.c klt.c klt_util.c writeFeatures.c trackFeatures.c
+GPU_SRC  = convolve_opt.c selectGoodFeatures_opt.c 
 EXAMPLES := $(wildcard example*.c)
 
 OBJ_CPU  = $(CPU_SRC:.c=.o)
@@ -54,3 +54,5 @@ $(OBJ_GPU): %.o: %.c
 .PHONY: clean
 clean:
 	rm -f $(OBJ_CPU) $(OBJ_GPU) $(GPU_LIB) $(EXECS)
+
+
