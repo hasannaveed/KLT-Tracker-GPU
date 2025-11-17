@@ -67,7 +67,7 @@ int main()
   //KLTWriteFeatureListToPPM(fl, img1, ncols, nrows, "output/feat99.ppm");
   KLTWriteFeatureListToPPM(fl, img1, ncols, nrows, "feat0.ppm");
 
-  for (i = 100 ; i < nFrames ; i++)  { // set the loop to start from 1 if want to run old dataset
+  for (i = 100 ; i < 200 ; i++)  { // set the loop to start from 1 if want to run old dataset
     //printf("Processing frame %d\n", i);
     sprintf(fnamein, "../../data/750/frame_%d.pgm", i);
 	//sprintf(fnamein, "../../data/img%d.pgm", i); // for old dataset

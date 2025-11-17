@@ -61,7 +61,7 @@ int main()
 #endif
     KLTStoreFeatureList(fl, ft, i);
     sprintf(fnameout, "feat%d.ppm", i);
-    KLTWriteFeatureListToPPM(fl, img2, ncols, nrows, fnameout);
+    //KLTWriteFeatureListToPPM(fl, img2, ncols, nrows, fnameout);
   }
   KLTWriteFeatureTable(ft, "features.txt", "%5.1f");
   KLTWriteFeatureTable(ft, "features.ft", NULL);

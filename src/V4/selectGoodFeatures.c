@@ -302,6 +302,7 @@ void _KLTSelectGoodFeatures(
   KLT_FeatureList featurelist,
   selectionMode mode)
 {
+  printf("Cpu running select good features");
   _KLT_FloatImage floatimg, gradx, grady;
   int window_hw, window_hh;
   int *pointlist;
@@ -476,6 +477,7 @@ void KLTSelectGoodFeatures(
   int nrows,
   KLT_FeatureList fl)
 {
+  printf("cpu running select good feaues");
   if (KLT_verbose >= 1)  {
     fprintf(stderr,  "(KLT) Selecting the %d best features "
             "from a %d by %d image...  ", fl->nFeatures, ncols, nrows);
